@@ -114,6 +114,22 @@
   @media (max-width:560px){
     #lobby{ min-width:0; width:94vw; padding:24px 18px; }
     #lobby .row{ flex-wrap:wrap; }
+    h1{ font-size:22px; margin-top:10px; }
+    #room-code-display{ font-size:17px !important; letter-spacing:3px !important; }
+    #table{ width:94vw; aspect-ratio:4/5; border-width:6px; border-radius:100px; }
+    .seat{ width:32%; }
+    .pname{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; padding:2px 7px; }
+    .chips,.bet-badge{ font-size:10px; }
+    .cards{ gap:2px; height:46px; min-height:46px; }
+    .card{ width:30px; height:44px; border-radius:4px; font-size:12px; }
+    .card .r{ font-size:14px; }
+    .card .s{ font-size:16px; }
+    .card.hand-type{ padding:0 4px; font-size:9px; }
+    .waiting-next{ height:30px; padding:7px 6px; font-size:10px; }
+    #pot{ font-size:17px; padding:5px 14px; }
+    #level{ max-width:170px; font-size:10px; }
+    #actions{ width:94vw; gap:6px; margin:8px 0; }
+    #actions button{ min-width:66px; padding:9px 10px; font-size:13px; }
   }
 </style>
 </head>
@@ -185,17 +201,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const SUITS=['♠','♥','♣','♦'], SUIT_RED={'♥':true,'♦':true};
 const RANK_NAME={2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'J',12:'Q',13:'K',14:'A'};
 const BASE=10, SEE_MULT=2, COMPARE_FEE=20, MAX_SEATS=8, AUTO_NEXT_DELAY=3000;
-// 8 个座位位置（seat 编号 → 圆桌坐标），支持最多 8 人
-const SEAT_POS = [
-  {bottom:'-6px', left:'38%'},   // seat 0 底部
-  {right:'2%', top:'18%'},       // seat 1 右下
-  {right:'3%', top:'48%'},       // seat 2 右中
-  {right:'2%', top:'6%'},        // seat 3 右上
-  {top:'2%', left:'38%'},        // seat 4 顶部
-  {left:'2%', top:'6%'},         // seat 5 左上
-  {left:'3%', top:'48%'},        // seat 6 左中
-  {left:'2%', top:'18%'},        // seat 7 左下
-];
+// 自己固定在底部，其余座位按当前人数沿椭圆桌边均匀分布。
+function seatPosition(index, total){
+  const angle = (90 + index * 360 / Math.max(1, total)) * Math.PI / 180;
+  return {
+    left:(50 + 38 * Math.cos(angle))+'%',
+    top:(50 + 36 * Math.sin(angle))+'%',
+    transform:'translate(-50%,-50%)'
+  };
+}
 
 function makeDeck(){ const d=[]; for(const s of SUITS) for(let r=2;r<=14;r++) d.push({rank:r,suit:s}); return d; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
@@ -1181,7 +1195,7 @@ function render(){
   });
   ordered.forEach((p, idx)=>{
     const seat = p.seat;
-    const pos = SEAT_POS[idx % SEAT_POS.length];
+    const pos = seatPosition(idx, ordered.length);
     const seatEl = document.createElement('div');
     seatEl.className = 'seat';
     seatEl.id = 'seat'+seat;
