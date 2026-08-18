@@ -460,7 +460,9 @@ function showRoomCode(code){
 }
 
 function enterGame(){
-  document.getElementById('btn-exit').style.display='inline-block';
+  const exitButton = document.getElementById('btn-exit');
+  exitButton.style.display='inline-block';
+  exitButton.disabled=false;
   document.getElementById('lobby').style.display='none';
   document.getElementById('table').style.display='block';
   document.getElementById('room-info').style.display='none';
@@ -496,11 +498,29 @@ function showNextJoinNotice(){
 
 async function leaveRoom(){
   if(isLeaving || !myRoomId) return;
-  const me = myPlayer();
-  if(!me) { clearRoomSession(); location.reload(); return; }
   isLeaving = true;
   render();
   try {
+    const [roomResult, playersResult] = await Promise.all([
+      sb.from('rooms').select().eq('id', myRoomId).maybeSingle(),
+      sb.from('players').select().eq('room_id', myRoomId).order('seat')
+    ]);
+    if(roomResult.error || playersResult.error){
+      throw roomResult.error || playersResult.error;
+    }
+    if(!roomResult.data){
+      clearRoomSession();
+      location.reload();
+      return;
+    }
+    room = roomResult.data;
+    roomPlayers = playersResult.data || [];
+    const me = myPlayer();
+    if(!me){
+      clearRoomSession();
+      location.reload();
+      return;
+    }
     if(autoStartTimer){ clearTimeout(autoStartTimer); autoStartTimer=null; }
     const others = roomPlayers.filter(p=>p.id!==me.id && !p.left_room);
     if(me.is_host && room.status==='playing'){
@@ -1197,7 +1217,7 @@ function render(){
   document.getElementById('btn-allin').disabled = !mt;
   document.getElementById('btn-fold').disabled = !mt;
   document.getElementById('btn-compare').disabled = !(mt && p && p.chips>=COMPARE_FEE);
-  document.getElementById('btn-exit').disabled = isLeaving || !p;
+  document.getElementById('btn-exit').disabled = isLeaving || !myRoomId;
   document.getElementById('btn-call').textContent = (p && needToCallOf(p, room.level)<=0) ? '过牌' : '跟注';
 }
 function makeCard(c){
