@@ -246,6 +246,9 @@ let isActing = false;
 let actionCommitted = false;
 let hostTickRunning = false;
 let authPromise = null;
+let observedTurnKey = '';
+let roomRefreshSeq = 0;
+let roomAppliedSeq = 0;
 
 function log(msg, cls=''){
   const el=document.createElement('div'); if(cls) el.className=cls; el.innerHTML=msg;
@@ -603,11 +606,21 @@ function subscribeRealtime(){
 }
 
 async function refreshRoom(){
+  const refreshSeq = ++roomRefreshSeq;
   const { data } = await sb.from('rooms').select().eq('id', myRoomId).single();
   if(!data) return;
+  if(refreshSeq < roomAppliedSeq) return;
+  if(room && room.updated_at && data.updated_at
+    && new Date(data.updated_at).getTime() < new Date(room.updated_at).getTime()) return;
+  roomAppliedSeq = refreshSeq;
   const roundChanged = !room || room.round!==data.round;
+  const turnKey = data.round+':'+data.status+':'+data.current_turn;
+  if(turnKey!==observedTurnKey){
+    observedTurnKey = turnKey;
+    actionCommitted = false;
+  }
   room = data;
-  if(roundChanged || room.status!=='playing' || room.current_turn!==mySeat) actionCommitted=false;
+  if(roundChanged || room.status!=='playing') actionCommitted=false;
   // 解析结算/比牌结果（公开手牌）
   settleResult = null;
   if(room.message){
@@ -1153,7 +1166,11 @@ function render(){
     document.getElementById('btn-start').style.display='none';
   }
   document.getElementById('pot').innerHTML = '底池 <span class="gold">'+room.pot+'</span>';
-  document.getElementById('level').textContent = '当前注额 · 暗注 '+room.level;
+  const turnPlayer = roomPlayers.find(p=>p.seat===room.current_turn && !p.left_room);
+  const turnText = room.status==='playing' && turnPlayer
+    ? (turnPlayer.user_id===myUserId ? ' · 轮到你' : ' · 轮到 '+turnPlayer.name)
+    : '';
+  document.getElementById('level').textContent = '当前注额 · 暗注 '+room.level+turnText;
   // 座位（动态创建：自己始终在最底部，其余按加入顺序排）
   const seatsEl = document.getElementById('seats');
   seatsEl.innerHTML = '';
