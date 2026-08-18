@@ -25,6 +25,15 @@
                  font-size:15px; color:#fff; background:linear-gradient(#2ea86b,#1f7a4d); }
   #lobby button.sec{ background:linear-gradient(#2c5f8a,#1f4a70); }
   #lobby .tip{ margin-top:14px; font-size:12px; color:#7aab8c; }
+  #public-rooms{ display:none; margin-top:18px; padding-top:14px; border-top:1px solid #2c4a36; text-align:left; }
+  #public-rooms .title{ display:flex; align-items:center; justify-content:space-between; color:var(--gold); font-weight:bold; margin-bottom:8px; }
+  #public-rooms .refresh{ min-width:34px; padding:5px 9px; font-size:14px; }
+  #public-room-list{ max-height:240px; overflow-y:auto; }
+  .public-room{ display:grid; grid-template-columns:1fr auto; gap:4px 12px; align-items:center; padding:10px 2px; border-bottom:1px solid #203d2c; }
+  .public-room .code{ color:#fff; font-weight:bold; letter-spacing:2px; }
+  .public-room .meta{ color:#9fd6b5; font-size:12px; }
+  .public-room button{ grid-column:2; grid-row:1 / span 2; padding:7px 14px; font-size:13px; }
+  .public-empty{ color:#7aab8c; text-align:center; padding:18px 0; font-size:13px; }
   #room-info{ margin-top:16px; font-size:18px; color:#ffd54a; letter-spacing:3px; display:none; }
 
   /* 桌面 */
@@ -49,6 +58,7 @@
   .card.back{ background:repeating-linear-gradient(45deg,#234,#345 6px); color:#fff; }
   .card.back .r,.card.back .s{ color:#8ab; }
   .card.hand-type{ width:auto; padding:0 8px; background:#123; color:#ffd54a; font-size:11px; border:1px solid var(--gold); }
+  .waiting-next{ height:34px; align-self:center; padding:8px 10px; border:1px solid #6d8f79; border-radius:6px; color:#b9d8c4; background:rgba(0,0,0,.35); font-size:12px; white-space:nowrap; }
   #center{ position:absolute; top:44%; left:50%; transform:translate(-50%,-50%); text-align:center; }
   #pot{ font-size:22px; font-weight:bold; color:#fff; background:rgba(0,0,0,.45); padding:6px 22px; border-radius:20px; }
   #pot .gold{ color:var(--gold); }
@@ -93,6 +103,15 @@
   #result .box{ background:#0f2a1c; border:2px solid var(--gold); padding:26px 40px; border-radius:16px; text-align:center; max-width:80vw; }
   #result .win{ font-size:24px; color:var(--gold); margin-bottom:10px; }
   #result .detail{ font-size:14px; color:#cfe9d6; margin-bottom:16px; line-height:1.8; }
+  #result .next-status{ font-size:13px; color:#9fd6b5; }
+  #join-toast{ display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:30;
+               padding:11px 18px; border:1px solid var(--gold); border-radius:8px; background:#0f2a1c;
+               color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.45); font-size:14px; }
+  #join-toast.show{ display:block; }
+  @media (max-width:560px){
+    #lobby{ min-width:0; width:94vw; padding:24px 18px; }
+    #lobby .row{ flex-wrap:wrap; }
+  }
 </style>
 </head>
 <body>
@@ -106,13 +125,18 @@
     <div class="row">
       <button id="btn-create" onclick="createRoom()">创建房间</button>
       <button id="btn-join" class="sec" onclick="joinRoom()">加入房间</button>
+      <button id="btn-public" class="sec" onclick="openPublicRooms()">公开房间</button>
     </div>
     <div class="row" style="display:none" id="join-row">
       <input id="room-code" placeholder="6位房号" maxlength="6" style="text-transform:uppercase">
       <button onclick="confirmJoin()">确认加入</button>
     </div>
+    <div id="public-rooms">
+      <div class="title"><span>公开房间</span><button class="refresh" onclick="loadPublicRooms()" title="刷新">↻</button></div>
+      <div id="public-room-list"></div>
+    </div>
     <div id="room-info"></div>
-    <div class="tip">房号约局 · 好友输入房号即可加入</div>
+    <div class="tip">输入房号或从公开房间加入</div>
   </div>
 
   <div id="table">
@@ -126,8 +150,6 @@
     <div id="compare-pick"><div class="box"><div class="ttl">选择要比牌的对手</div><div class="opts"></div><button class="cancel" onclick="cancelCompare()">取消</button></div></div>
     <div id="raise-pick"><div class="box"><div class="ttl">加注（无上限）</div><div class="info"></div><div class="opts"></div><div class="custom"><input type="number" id="raise-custom" min="1" placeholder="自定义暗注单位"><button onclick="confirmCustomRaise()">确定</button></div><button class="cancel" onclick="cancelRaise()">取消</button></div></div>
   </div>
-
-  <div id="countdown" style="display:none;font-size:18px;color:#ffd54a;font-weight:bold;margin-bottom:6px;letter-spacing:2px;"></div>
 
   <div id="actions">
     <button id="btn-start" class="start" onclick="startRound()" style="display:none">开始游戏</button>
@@ -147,7 +169,8 @@
       <button onclick="sendMessage()">发送</button>
     </div>
   </div>
-  <div id="result"><div class="box"><div class="win"></div><div class="detail"></div></div></div>
+  <div id="result"><div class="box"><div class="win"></div><div class="detail"></div><div class="next-status"></div></div></div>
+  <div id="join-toast"></div>
 
 <script>
 /* ================= 配置：替换成你的 Supabase ================= */
@@ -157,7 +180,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 /* ================= 牌型判定（与单机版一致） ================= */
 const SUITS=['♠','♥','♣','♦'], SUIT_RED={'♥':true,'♦':true};
 const RANK_NAME={2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'10',11:'J',12:'Q',13:'K',14:'A'};
-const BASE=10, SEE_MULT=2, COMPARE_FEE=20, MAX_SEATS=8;
+const BASE=10, SEE_MULT=2, COMPARE_FEE=20, MAX_SEATS=8, AUTO_NEXT_DELAY=3000;
 // 8 个座位位置（seat 编号 → 圆桌坐标），支持最多 8 人
 const SEAT_POS = [
   {bottom:'-6px', left:'38%'},   // seat 0 底部
@@ -202,9 +225,18 @@ let hostState = null;       // 房主内存权威状态
 let hostTimer = null;
 let settleResult = null;    // 结算结果（从 rooms.message 解析）
 let isStarting = false;     // 发牌防重入
-let myTurnStart = 0;        // 轮到我行动的时间戳
-let wasMyTurn = false;      // 上一帧是否轮到我（用于检测轮次切换）
 let publicHands = {};       // seat -> {cards, typeName}，比牌时公开的手牌
+let autoStartTimer = null;
+let autoStartRound = -1;
+let shownSettleRound = -1;
+let publicRoomTimer = null;
+let publicRoomsById = new Map();
+let knownPlayerIds = new Set();
+let playersLoaded = false;
+let joinToastTimer = null;
+let joinNoticeQueue = [];
+let joinToastActive = false;
+let isJoining = false;
 
 function log(msg, cls=''){
   const el=document.createElement('div'); if(cls) el.className=cls; el.innerHTML=msg;
@@ -225,12 +257,13 @@ async function createRoom(){
   if(!myUserId) await initAuth();
   myName = document.getElementById('nickname').value.trim() || ('玩家'+Math.floor(Math.random()*1000));
   const code = genCode();
-  const { data: r, error } = await sb.from('rooms').insert({ code, host_seat:0, status:'waiting' }).select().single();
+  const { data: r, error } = await sb.from('rooms').insert({ code, host_seat:0, status:'waiting', is_public:true }).select().single();
   if(error){ alert('创建失败：'+error.message); return; }
   myRoomId = r.id; isHost = true; mySeat = 0;
-  await sb.from('players').insert({ room_id:myRoomId, user_id:myUserId, seat:0, name:myName, is_host:true });
+  await sb.from('players').insert({ room_id:myRoomId, user_id:myUserId, seat:0, name:myName, is_host:true, in_round:false });
   showRoomCode(code);
   enterGame();
+  showJoinNotice(myName);
 }
 
 async function confirmJoin(){
@@ -239,19 +272,100 @@ async function confirmJoin(){
   const code = document.getElementById('room-code').value.trim().toUpperCase();
   const { data: r, error } = await sb.from('rooms').select().eq('code', code).single();
   if(error || !r){ alert('房间不存在'); return; }
-  if(r.status !== 'waiting'){ alert('游戏已开始，无法加入'); return; }
-  myRoomId = r.id; isHost = false;
-  // 找空位（不限制人数）
-  const { data: ps } = await sb.from('players').select('seat').eq('room_id', myRoomId);
-  const taken = ps.map(p=>p.seat);
-  let seat = 1; while(taken.includes(seat)) seat++;
-  mySeat = seat;
-  await sb.from('players').insert({ room_id:myRoomId, user_id:myUserId, seat, name:myName, is_host:false });
-  showRoomCode(code);
-  enterGame();
+  await joinRoomRecord(r);
 }
 
 function joinRoom(){ document.getElementById('join-row').style.display='flex'; }
+async function openPublicRooms(){
+  document.getElementById('join-row').style.display='none';
+  document.getElementById('public-rooms').style.display='block';
+  await loadPublicRooms();
+  if(publicRoomTimer) clearInterval(publicRoomTimer);
+  publicRoomTimer = setInterval(loadPublicRooms, 3000);
+}
+async function loadPublicRooms(){
+  const list = document.getElementById('public-room-list');
+  list.innerHTML = '<div class="public-empty">正在搜索...</div>';
+  const { data: rooms, error } = await sb.from('rooms')
+    .select('id,code,status,created_at')
+    .eq('is_public', true)
+    .in('status', ['waiting','playing','finished'])
+    .order('created_at', { ascending:false })
+    .limit(30);
+  if(error){
+    list.innerHTML = '<div class="public-empty">公开房间加载失败</div>';
+    return;
+  }
+  if(!rooms || rooms.length===0){
+    publicRoomsById = new Map();
+    list.innerHTML = '<div class="public-empty">暂无公开房间</div>';
+    return;
+  }
+  const roomIds = rooms.map(r=>r.id);
+  const { data: players } = await sb.from('players').select('room_id').in('room_id', roomIds);
+  const counts = {};
+  (players || []).forEach(p=>{ counts[p.room_id]=(counts[p.room_id]||0)+1; });
+  const available = rooms.filter(r=>(counts[r.id]||0)>0);
+  publicRoomsById = new Map(available.map(r=>[r.id,r]));
+  list.innerHTML = '';
+  if(available.length===0){
+    list.innerHTML = '<div class="public-empty">暂无公开房间</div>';
+    return;
+  }
+  const statusText = { waiting:'等待开局', playing:'游戏中，下局参与', finished:'即将开始下一局' };
+  available.forEach(r=>{
+    const row = document.createElement('div');
+    row.className = 'public-room';
+    const code = document.createElement('div');
+    code.className = 'code';
+    code.textContent = r.code;
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = (statusText[r.status] || r.status) + ' · ' + (counts[r.id] || 0) + ' 人';
+    const button = document.createElement('button');
+    button.textContent = '加入';
+    button.onclick = ()=>joinPublicRoom(r.id);
+    row.append(code, meta, button);
+    list.appendChild(row);
+  });
+}
+async function joinPublicRoom(roomId){
+  if(!myUserId) await initAuth();
+  myName = document.getElementById('nickname').value.trim() || ('玩家'+Math.floor(Math.random()*1000));
+  const roomInfo = publicRoomsById.get(roomId);
+  if(!roomInfo) return;
+  const { data: latest, error } = await sb.from('rooms').select().eq('id', roomId).eq('is_public', true).single();
+  if(error || !latest){ alert('房间已关闭'); await loadPublicRooms(); return; }
+  await joinRoomRecord(latest);
+}
+async function joinRoomRecord(roomInfo){
+  if(isJoining) return;
+  isJoining = true;
+  myRoomId = roomInfo.id;
+  isHost = false;
+  let joined = false;
+  for(let attempt=0; attempt<5 && !joined; attempt++){
+    const { data: ps, error: seatsError } = await sb.from('players').select('seat').eq('room_id', myRoomId);
+    if(seatsError){ alert('加入失败：'+seatsError.message); break; }
+    const taken = (ps || []).map(p=>p.seat);
+    let seat = 0; while(taken.includes(seat)) seat++;
+    const { error } = await sb.from('players').insert({
+      room_id:myRoomId, user_id:myUserId, seat, name:myName, is_host:false, in_round:false
+    });
+    if(!error){
+      mySeat = seat;
+      joined = true;
+    } else if(error.code!=='23505'){
+      alert('加入失败：'+error.message);
+      break;
+    }
+  }
+  if(!joined){ myRoomId=null; isJoining=false; return; }
+  showRoomCode(roomInfo.code);
+  enterGame();
+  showJoinNotice(myName);
+  isJoining = false;
+}
 function genCode(){
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉易混淆的 I/O/0/1
   let code = '';
@@ -265,6 +379,7 @@ function showRoomCode(code){
 }
 
 function enterGame(){
+  if(publicRoomTimer){ clearInterval(publicRoomTimer); publicRoomTimer=null; }
   document.getElementById('lobby').style.display='none';
   document.getElementById('table').style.display='block';
   document.getElementById('room-info').style.display='none';
@@ -276,6 +391,26 @@ function enterGame(){
   loadMessages();
   // 轮询兜底：不依赖 Realtime，保证同步可靠
   setInterval(()=>{ refreshRoom(); refreshPlayers(); refreshHand(); loadMessages(); }, 2000);
+}
+
+function showJoinNotice(name){
+  joinNoticeQueue.push(name);
+  if(joinToastActive) return;
+  showNextJoinNotice();
+}
+function showNextJoinNotice(){
+  const el = document.getElementById('join-toast');
+  const name = joinNoticeQueue.shift();
+  if(!name){ joinToastActive=false; return; }
+  joinToastActive = true;
+  el.textContent = name + ' 加入了房间';
+  el.classList.add('show');
+  if(joinToastTimer) clearTimeout(joinToastTimer);
+  joinToastTimer = setTimeout(()=>{
+    el.classList.remove('show');
+    joinToastActive = false;
+    showNextJoinNotice();
+  }, 2200);
 }
 
 /* ================= 实时订阅 ================= */
@@ -299,27 +434,72 @@ async function refreshRoom(){
   if(room.message){
     try{
       const r = JSON.parse(room.message);
-      if(r.type==='settle'){ settleResult = r; publicHands = {}; showResult(); }
-      else if(r.type==='compare'){ r.players.forEach(p=>{ publicHands[p.seat] = p; }); }
+      if(r.type==='settle' && room.status!=='playing'){
+        settleResult = r;
+        publicHands = {};
+        if(shownSettleRound!==room.round){
+          shownSettleRound = room.round;
+          showResult();
+        }
+      } else if(r.type==='compare' && room.status==='playing'){
+        r.players.forEach(p=>{ publicHands[p.seat] = p; });
+      }
     }
     catch(e){ /* 忽略 */ }
-  } else if(room.status!=='finished'){
-    // 新一局开始：隐藏结算弹窗，清空比牌公开的牌
+  }
+  if(room.status==='playing'){
+    // 新一局开始：立即隐藏上一局结算，清空公开的牌
     document.getElementById('result').classList.remove('show');
+    settleResult = null;
     publicHands = {};
   }
+  syncAutoStart();
   render();
 }
 
 async function refreshPlayers(){
   const { data } = await sb.from('players').select().eq('room_id', myRoomId).order('seat');
   if(!data) return;
-  roomPlayers = data;
-  // 检测牌局结束
-  if(room && room.status==='finished' && isHost){
-    // 房主点继续
+  if(playersLoaded){
+    data.filter(p=>!knownPlayerIds.has(p.id) && p.user_id!==myUserId)
+      .forEach(p=>showJoinNotice(p.name));
   }
+  knownPlayerIds = new Set(data.map(p=>p.id));
+  playersLoaded = true;
+  roomPlayers = data;
+  const me = roomPlayers.find(p=>p.user_id===myUserId);
+  if(me){
+    mySeat = me.seat;
+    isHost = !!me.is_host;
+  } else {
+    isHost = false;
+  }
+  syncAutoStart();
   render();
+}
+
+function syncAutoStart(){
+  if(!isHost || !room || room.status!=='finished'){
+    if(autoStartTimer){ clearTimeout(autoStartTimer); autoStartTimer=null; }
+    return;
+  }
+  const settledRound = room.round || 0;
+  if(autoStartTimer || autoStartRound===settledRound) return;
+  autoStartRound = settledRound;
+  autoStartTimer = setTimeout(async()=>{
+    autoStartTimer = null;
+    const { data: latest } = await sb.from('rooms').select().eq('id', myRoomId).single();
+    if(!latest || latest.status!=='finished' || latest.round!==settledRound){
+      autoStartRound = -1;
+      return;
+    }
+    room = latest;
+    const started = await startRound();
+    if(!started){
+      autoStartRound = -1;
+      syncAutoStart();
+    }
+  }, AUTO_NEXT_DELAY);
 }
 
 async function refreshHand(){
@@ -353,30 +533,40 @@ async function loadMessages(){
 
 /* ================= 房主：开始新局 ================= */
 async function startRound(){
-  if(!isHost || isStarting) return;
+  if(!isHost || isStarting) return false;
   isStarting = true;
   document.getElementById('btn-start').style.display='none';
   try {
     settleResult = null;
     document.getElementById('result').classList.remove('show');
-    const alive = roomPlayers.filter(p=>p.chips>0);
-    if(alive.length < 2){ alert('至少需要 2 名有筹码的玩家'); return; }
+    const { data: latestPlayers, error: playersError } = await sb.from('players').select().eq('room_id', myRoomId).order('seat');
+    if(playersError) throw playersError;
+    roomPlayers = latestPlayers || [];
+    const activePlayers = roomPlayers.filter(p=>p.chips>0);
+    if(activePlayers.length < 2){
+      await sb.from('rooms').update({ status:'waiting', current_turn:-1 }).eq('id', myRoomId);
+      room = { ...room, status:'waiting', current_turn:-1 };
+      return false;
+    }
     // 洗牌发牌
     const deck = shuffle(makeDeck());
-    const seats = roomPlayers.map(p=>p.seat).sort((a,b)=>a-b);
+    const seats = activePlayers.map(p=>p.seat).sort((a,b)=>a-b);
     const hands = {};
     seats.forEach((s,i)=>{ hands[s] = deck.slice(i*3, i*3+3); });
     const types = {};
     for(const s of seats) types[s] = evaluate(hands[s]);
     // 底注
     let pot = 0;
-    for(const p of roomPlayers){
+    await sb.from('players').update({ in_round:false }).eq('room_id', myRoomId);
+    for(const p of activePlayers){
       const ante = Math.min(BASE, p.chips);
       pot += ante;
-      await sb.from('players').update({ chips:p.chips-ante, bet:0, total:ante, seen:false, folded:false }).eq('id', p.id);
+      await sb.from('players').update({
+        chips:p.chips-ante, bet:0, total:ante, seen:false, folded:false, compare_with:-1, in_round:true
+      }).eq('id', p.id);
     }
     // 写手牌（RLS 保护：只有本人和房主能读）
-    for(const p of roomPlayers){
+    for(const p of activePlayers){
       const s = p.seat;
       const existing = await sb.from('hands').select('player_id').eq('player_id', p.id).maybeSingle();
       if(existing.data){
@@ -385,22 +575,29 @@ async function startRound(){
         await sb.from('hands').insert({ player_id:p.id, user_id:p.user_id, room_id:myRoomId, hand:hands[s] });
       }
     }
+    // 等待公共玩家状态完成重置，避免房主轮询读取上一局的 bet/folded。
+    await refreshPlayers();
     // 房主权威状态（含快照，用于检测玩家操作）
     hostState = { hands, types, level:1, pot,
       turn:seats[0], lastRaiser:seats[0], actedThisRound:0,
-      betSnap:{}, seenSnap:{}, settled:false, turnStart: Date.now() };
+      betSnap:{}, seenSnap:{}, settled:false };
     for(const s of seats){ hostState.betSnap[s]=0; hostState.seenSnap[s]=false; }
     // 更新房间状态
-    await sb.from('rooms').update({
+    const { data: nextRoom, error: roomError } = await sb.from('rooms').update({
       status:'playing', current_turn:hostState.turn, level:1, pot,
       round:(room.round||0)+1, message:''
-    }).eq('id', myRoomId);
+    }).eq('id', myRoomId).select().single();
+    if(roomError) throw roomError;
+    room = nextRoom;
     // 启动房主轮询
     if(hostTimer) clearInterval(hostTimer);
     hostTimer = setInterval(hostTick, 500);
+    render();
+    return true;
   } catch(e) {
     alert('开始游戏出错：' + (e.message || e));
     console.error(e);
+    return false;
   } finally {
     isStarting = false;
   }
@@ -413,25 +610,17 @@ function needToCallOf(p, level){
 }
 async function hostTick(){
   if(!isHost || !hostState || hostState.settled) return;
-  const alive = roomPlayers.filter(p=>!p.folded);
+  const roundPlayers = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat]);
+  const alive = roundPlayers.filter(p=>!p.folded);
   if(alive.length===1){ await hostSettle(); return; }
 
-  const cur = roomPlayers.find(p=>p.seat===hostState.turn);
+  const cur = roundPlayers.find(p=>p.seat===hostState.turn);
   if(!cur){ advanceTurn(hostState.turn); await updateRoomState(); return; }
   if(cur.folded){ advanceTurn(cur.seat); await updateRoomState(); return; }
 
   // 筹码不足自动认输
   if(cur.chips<=0 && needToCallOf(cur, hostState.level)>0){
     await sb.from('players').update({ folded:true }).eq('id', cur.id);
-    advanceTurn(cur.seat);
-    await updateRoomState();
-    return;
-  }
-
-  // 操作超时（10 秒）自动弃牌
-  if(Date.now() - hostState.turnStart > 10000){
-    await sb.from('players').update({ folded:true }).eq('id', cur.id);
-    log(`<span class="bad">${cur.name} 操作超时，自动弃牌</span>`);
     advanceTurn(cur.seat);
     await updateRoomState();
     return;
@@ -470,7 +659,7 @@ async function hostTick(){
   }
 
   // 全员跟满 → 摊牌
-  const allMatched = roomPlayers.every(p=>p.folded || needToCallOf(p, hostState.level)<=0);
+  const allMatched = roundPlayers.every(p=>p.folded || needToCallOf(p, hostState.level)<=0);
   if(allMatched && hostState.actedThisRound>=alive.length){ await hostSettle(); return; }
 
   advanceTurn(cur.seat);
@@ -478,13 +667,12 @@ async function hostTick(){
 }
 function advanceTurn(fromSeat){
   hostState.turn = nextSeat(fromSeat);
-  hostState.turnStart = Date.now();
 }
 async function hostCompare(cur){
   // 比牌手续费并入底池
   const delta = cur.bet - (hostState.betSnap[cur.seat] ?? 0);
   if(delta > 0){ hostState.pot += delta; hostState.betSnap[cur.seat] = cur.bet; }
-  const target = roomPlayers.find(x=>x.seat===cur.compare_with);
+  const target = roomPlayers.find(x=>x.seat===cur.compare_with && x.in_round);
   if(!target || target.folded){
     await sb.from('players').update({ compare_with: -1 }).eq('id', cur.id);
     return;
@@ -504,7 +692,7 @@ async function hostCompare(cur){
   };
   await sb.from('rooms').update({ message: JSON.stringify(result) }).eq('id', myRoomId);
   // 比牌后检查是否只剩一人
-  const alive = roomPlayers.filter(p=>!p.folded);
+  const alive = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat] && !p.folded);
   if(alive.length<=1){ await hostSettle(); return; }
   advanceTurn(cur.seat);
   await updateRoomState();
@@ -515,14 +703,15 @@ async function updateRoomState(){
   }).eq('id', myRoomId);
 }
 function nextSeat(seat){
-  const seats = roomPlayers.map(p=>p.seat).sort((a,b)=>a-b);
+  const seats = Object.keys(hostState.hands).map(Number).sort((a,b)=>a-b);
   const idx = seats.indexOf(seat);
   return seats[(idx+1) % seats.length];
 }
 async function hostSettle(){
   hostState.settled = true;
   if(hostTimer) clearInterval(hostTimer);
-  const alive = roomPlayers.filter(p=>!p.folded);
+  const roundPlayers = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat]);
+  const alive = roundPlayers.filter(p=>!p.folded);
   let winner = null;
   for(const p of alive){
     const t = hostState.types[p.seat];
@@ -533,14 +722,14 @@ async function hostSettle(){
   // 公开结果到 message 字段（所有玩家可读，绕过 hands 表 RLS）
   const result = {
     type:'settle', winner:winner.name, winnerSeat:winner.seat, amount:win,
-    players: roomPlayers.map(p=>({
+    players: roundPlayers.map(p=>({
       seat:p.seat, name:p.name, folded:p.folded,
       cards: hostState.hands[p.seat],
       typeName: hostState.types[p.seat].name,
     })),
   };
   // 破产玩家（筹码输光）自动离开房间；胜者必赢筹码，排除
-  const broke = roomPlayers.filter(p=>p.chips<=0 && p.id !== winner.id);
+  const broke = roundPlayers.filter(p=>p.chips<=0 && p.id !== winner.id);
   for(const p of broke){
     await sb.from('players').delete().eq('id', p.id);
   }
@@ -549,18 +738,23 @@ async function hostSettle(){
   if(!remaining.some(p=>p.is_host) && remaining.length>0){
     await sb.from('players').update({ is_host:true }).eq('id', remaining[0].id);
   }
+  await sb.from('players').update({ in_round:false }).eq('room_id', myRoomId).eq('in_round', true);
   // 有筹码玩家不足 2 人 → 房间回到等待，新玩家可加入；否则可继续下一局
   const finalStatus = remaining.length>=2 ? 'finished' : 'waiting';
-  await sb.from('rooms').update({
+  const { data: finishedRoom } = await sb.from('rooms').update({
     status:finalStatus, current_turn:-1, message: JSON.stringify(result)
-  }).eq('id', myRoomId);
+  }).eq('id', myRoomId).select().single();
+  if(finishedRoom) room = finishedRoom;
   hostState = null;
+  await refreshPlayers();
+  syncAutoStart();
 }
 
 /* ================= 玩家操作 ================= */
 function myPlayer(){ return roomPlayers.find(p=>p.user_id===myUserId); }
 function myTurnNow(){
-  return room && room.status==='playing' && room.current_turn===mySeat && myPlayer() && !myPlayer().folded;
+  return room && room.status==='playing' && room.current_turn===mySeat
+    && myPlayer() && myPlayer().in_round && !myPlayer().folded;
 }
 async function actSee(){
   const p = myPlayer(); if(!p) return;
@@ -617,7 +811,7 @@ function pickCompare(){
   const box=document.getElementById('compare-pick'), opts=box.querySelector('.opts');
   opts.innerHTML='';
   roomPlayers.forEach(p=>{
-    if(p.seat===mySeat || p.folded) return;
+    if(p.seat===mySeat || !p.in_round || p.folded) return;
     const b=document.createElement('button');
     b.textContent=p.name;
     b.onclick=()=>doCompare(p.seat);
@@ -638,7 +832,7 @@ async function doCompare(targetSeat){
 function render(){
   if(!room) return;
   // 房主开始新局按钮
-  if(isHost && (room.status==='waiting' || room.status==='finished') && roomPlayers.length>=2){
+  if(isHost && room.status==='waiting' && roomPlayers.filter(p=>p.chips>0).length>=2){
     document.getElementById('btn-start').style.display='inline-block';
   } else {
     document.getElementById('btn-start').style.display='none';
@@ -666,13 +860,18 @@ function render(){
       <div class="chips">筹码 <span class="amt">${p.chips}</span></div>
       <div class="bet-badge ${p.bet>0?'show':''}">${p.bet>0?'押 '+p.bet:''}</div>
       <div class="cards"></div>`;
-    seatEl.classList.toggle('folded', p.folded);
-    seatEl.classList.toggle('active', room.status==='playing' && room.current_turn===seat && !p.folded);
+    seatEl.classList.toggle('folded', p.in_round && p.folded);
+    seatEl.classList.toggle('active', room.status==='playing' && p.in_round && room.current_turn===seat && !p.folded);
     // 手牌
     const cardsEl = seatEl.querySelector('.cards');
     const sr = settleResult ? settleResult.players.find(x=>x.seat===seat) : null;
     const ph = publicHands[seat];
-    if(ph && ph.cards){
+    if(room.status==='playing' && !p.in_round){
+      const waiting=document.createElement('div');
+      waiting.className='waiting-next';
+      waiting.textContent='等待下一局';
+      cardsEl.appendChild(waiting);
+    } else if(ph && ph.cards){
       // 比牌公开的手牌
       for(const c of ph.cards){ cardsEl.appendChild(makeCard(c)); }
       const t=document.createElement('div'); t.className='card hand-type'; t.textContent=ph.typeName; cardsEl.appendChild(t);
@@ -696,8 +895,6 @@ function render(){
   });
   // 操作按钮
   const mt = myTurnNow();
-  if(mt && !wasMyTurn) myTurnStart = Date.now(); // 轮到我，开始计时
-  wasMyTurn = mt;
   document.getElementById('btn-see').disabled = !(mt && myPlayer() && !myPlayer().seen);
   document.getElementById('btn-call').disabled = !mt;
   document.getElementById('btn-raise').disabled = !mt;
@@ -707,17 +904,6 @@ function render(){
   const p = myPlayer();
   document.getElementById('btn-call').textContent = (p && needToCallOf(p, room.level)<=0) ? '过牌' : '跟注';
 }
-function updateCountdown(){
-  const el = document.getElementById('countdown');
-  if(myTurnNow()){
-    const remain = Math.max(0, 10 - Math.floor((Date.now() - myTurnStart)/1000));
-    el.style.display = 'block';
-    el.textContent = '⏱ 轮到你了，剩余 ' + remain + ' 秒';
-  } else {
-    el.style.display = 'none';
-  }
-}
-setInterval(updateCountdown, 500);
 function makeCard(c){
   const d=document.createElement('div');
   d.className='card'+(SUIT_RED[c.suit]?' red':'');
@@ -735,22 +921,9 @@ function showResult(){
   });
   d += `<div style="margin-top:6px;color:var(--gold)">胜者：${settleResult.winner} · +${settleResult.amount} 筹码</div>`;
   el.querySelector('.detail').innerHTML = d;
-  // 下一局按钮（复用）
-  let btn = el.querySelector('.next-btn');
-  if(!btn){
-    btn = document.createElement('button');
-    btn.className = 'next-btn';
-    btn.style.cssText = 'padding:10px 24px;border:none;border-radius:10px;cursor:pointer;font-weight:bold;background:var(--gold);color:#3a2800;font-size:16px;margin-top:8px;';
-    el.querySelector('.box').appendChild(btn);
-  }
-  if(isHost){
-    btn.textContent = '开始下一局';
-    btn.disabled = false;
-    btn.onclick = ()=>{ el.classList.remove('show'); settleResult=null; startRound(); };
-  } else {
-    btn.textContent = '等待房主开始';
-    btn.disabled = true;
-  }
+  el.querySelector('.next-status').textContent = room && room.status==='finished'
+    ? '下一局即将自动开始'
+    : '等待更多玩家加入';
   el.classList.add('show');
 }
 </script>
