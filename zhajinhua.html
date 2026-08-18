@@ -220,6 +220,7 @@ function handText(cards,type){ return cards.map(c=>RANK_NAME[c.rank]+c.suit).joi
 
 /* ================= 全局状态 ================= */
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const ROOM_SESSION_KEY = 'zhajinhua.activeRoom.v1';
 let myUserId = null, myRoomId = null, mySeat = -1, myName = '';
 let isHost = false;
 let room = null;            // rooms 表当前行
@@ -244,6 +245,7 @@ let isLeaving = false;
 let isActing = false;
 let actionCommitted = false;
 let hostTickRunning = false;
+let authPromise = null;
 
 function log(msg, cls=''){
   const el=document.createElement('div'); if(cls) el.className=cls; el.innerHTML=msg;
@@ -253,14 +255,64 @@ function log(msg, cls=''){
 
 /* ================= 登录 ================= */
 async function initAuth(){
-  const { data, error } = await sb.auth.signInAnonymously();
-  if(error){ alert('登录失败：'+error.message); return; }
-  myUserId = data.user.id;
+  if(myUserId) return myUserId;
+  if(authPromise) return authPromise;
+  authPromise = (async()=>{
+    const { data: sessionData, error: sessionError } = await sb.auth.getSession();
+    if(sessionError){ alert('登录状态读取失败：'+sessionError.message); return null; }
+    if(sessionData.session && sessionData.session.user){
+      myUserId = sessionData.session.user.id;
+      return myUserId;
+    }
+    const { data, error } = await sb.auth.signInAnonymously();
+    if(error){ alert('登录失败：'+error.message); return null; }
+    myUserId = data.user.id;
+    return myUserId;
+  })();
+  try { return await authPromise; }
+  finally { authPromise = null; }
 }
-initAuth();
+function saveRoomSession(){
+  try {
+    localStorage.setItem(ROOM_SESSION_KEY, JSON.stringify({ roomId:myRoomId, name:myName }));
+  } catch(e) { /* 隐私模式禁用存储时仍允许正常游戏 */ }
+}
+function clearRoomSession(){
+  try { localStorage.removeItem(ROOM_SESSION_KEY); }
+  catch(e) { /* 同上 */ }
+}
+async function restoreRoomSession(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(ROOM_SESSION_KEY) || 'null'); }
+  catch(e) { clearRoomSession(); }
+  if(!saved || !saved.roomId || !myUserId) return;
+  const [roomResult, playerResult] = await Promise.all([
+    sb.from('rooms').select().eq('id', saved.roomId).maybeSingle(),
+    sb.from('players').select().eq('room_id', saved.roomId)
+      .eq('user_id', myUserId).eq('left_room', false).limit(1).maybeSingle()
+  ]);
+  if(roomResult.error || playerResult.error) return;
+  const savedRoom = roomResult.data;
+  const savedPlayer = playerResult.data;
+  if(!savedRoom || !savedPlayer){ clearRoomSession(); return; }
+  myRoomId = savedRoom.id;
+  mySeat = savedPlayer.seat;
+  myName = savedPlayer.name || saved.name || '';
+  isHost = !!savedPlayer.is_host;
+  room = savedRoom;
+  document.getElementById('nickname').value = myName;
+  showRoomCode(savedRoom.code);
+  enterGame();
+}
+async function bootstrap(){
+  if(await initAuth()) await restoreRoomSession();
+}
+const startupPromise = bootstrap();
 
 /* ================= 创建/加入房间 ================= */
 async function createRoom(){
+  await startupPromise;
+  if(myRoomId) return;
   if(!myUserId) await initAuth();
   myName = document.getElementById('nickname').value.trim() || ('玩家'+Math.floor(Math.random()*1000));
   const code = genCode();
@@ -268,12 +320,15 @@ async function createRoom(){
   if(error){ alert('创建失败：'+error.message); return; }
   myRoomId = r.id; isHost = true; mySeat = 0;
   await sb.from('players').insert({ room_id:myRoomId, user_id:myUserId, seat:0, name:myName, is_host:true, in_round:false });
+  saveRoomSession();
   showRoomCode(code);
   enterGame();
   showJoinNotice(myName);
 }
 
 async function confirmJoin(){
+  await startupPromise;
+  if(myRoomId) return;
   if(!myUserId) await initAuth();
   myName = document.getElementById('nickname').value.trim() || ('玩家'+Math.floor(Math.random()*1000));
   const code = document.getElementById('room-code').value.trim().toUpperCase();
@@ -337,6 +392,8 @@ async function loadPublicRooms(){
   });
 }
 async function joinPublicRoom(roomId){
+  await startupPromise;
+  if(myRoomId) return;
   if(!myUserId) await initAuth();
   myName = document.getElementById('nickname').value.trim() || ('玩家'+Math.floor(Math.random()*1000));
   const roomInfo = publicRoomsById.get(roomId);
@@ -384,6 +441,7 @@ async function joinRoomRecord(roomInfo){
     }
   }
   if(!joined){ myRoomId=null; isJoining=false; return; }
+  saveRoomSession();
   showRoomCode(roomInfo.code);
   enterGame();
   if(!resumed) showJoinNotice(myName);
@@ -439,7 +497,7 @@ function showNextJoinNotice(){
 async function leaveRoom(){
   if(isLeaving || !myRoomId) return;
   const me = myPlayer();
-  if(!me) { location.reload(); return; }
+  if(!me) { clearRoomSession(); location.reload(); return; }
   isLeaving = true;
   render();
   try {
@@ -470,6 +528,7 @@ async function leaveRoom(){
         await sb.from('rooms').update({ status:'waiting', current_turn:-1, message:'' }).eq('id', myRoomId);
       }
     }
+    clearRoomSession();
     location.reload();
   } catch(e) {
     alert('退出房间失败：'+(e.message || e));
