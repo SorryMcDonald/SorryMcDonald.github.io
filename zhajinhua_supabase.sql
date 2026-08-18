@@ -16,12 +16,15 @@ create table if not exists public.rooms (
   message     text not null default '',      -- 最近一条操作播报
   msg_seq     int  not null default 0,       -- 播报序号（递增触发实时更新）
   is_public   boolean not null default true, -- 是否出现在公开房间列表
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
 );
 -- 兼容已经运行过旧版脚本的数据库。
 alter table public.rooms add column if not exists is_public boolean not null default true;
-create index if not exists idx_rooms_public_status
-  on public.rooms(is_public, status, created_at desc);
+alter table public.rooms add column if not exists updated_at timestamptz not null default now();
+drop index if exists public.idx_rooms_public_status;
+create index idx_rooms_public_status
+  on public.rooms(is_public, status, updated_at desc);
 
 -- ---------- 玩家表（公共状态） ----------
 create table if not exists public.players (
@@ -37,14 +40,52 @@ create table if not exists public.players (
   total    int  not null default 0,          -- 本局总投入（含底注，用于边池）
   compare_with int not null default -1,      -- 比牌目标座位（-1=无）
   in_round boolean not null default false,   -- 是否参与当前正在进行的牌局
+  all_in   boolean not null default false,   -- 是否已全押
+  action_seq bigint not null default 0,      -- 玩家动作序号（过牌也会递增）
+  last_action text not null default '',      -- see/call/raise/allin/compare/fold
+  left_room boolean not null default false,  -- 中途退出但等待本局结算清理
   is_host  boolean not null default false,
   unique(room_id, seat)
 );
 -- 兼容已经运行过旧版脚本的数据库。
 alter table public.players add column if not exists compare_with int not null default -1;
 alter table public.players add column if not exists in_round boolean not null default false;
+alter table public.players add column if not exists all_in boolean not null default false;
+alter table public.players add column if not exists action_seq bigint not null default 0;
+alter table public.players add column if not exists last_action text not null default '';
+alter table public.players add column if not exists left_room boolean not null default false;
 create index if not exists idx_players_room on public.players(room_id);
 create index if not exists idx_players_user on public.players(user_id);
+
+-- 数据库层硬限制每个房间最多 8 名未退出玩家，并用事务锁处理并发加入。
+create or replace function public.enforce_zhajinhua_room_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+begin
+  if new.left_room then
+    return new;
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(new.room_id::text, 0));
+  if (
+    select count(*)
+    from public.players p
+    where p.room_id=new.room_id
+      and not p.left_room
+      and p.id<>new.id
+  ) >= 8 then
+    raise exception 'ROOM_FULL';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_zhajinhua_room_limit on public.players;
+create trigger trg_zhajinhua_room_limit
+before insert or update of room_id, left_room on public.players
+for each row execute function public.enforce_zhajinhua_room_limit();
 
 -- ---------- 手牌表（RLS 保护隐私） ----------
 create table if not exists public.hands (
@@ -65,6 +106,84 @@ create table if not exists public.messages (
 );
 create index if not exists idx_messages_room_created
   on public.messages(room_id, created_at);
+
+-- ---------- 房间活动时间与自动清理 ----------
+create or replace function public.set_zhajinhua_room_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at=now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_zhajinhua_room_updated_at on public.rooms;
+create trigger trg_zhajinhua_room_updated_at
+before update on public.rooms
+for each row execute function public.set_zhajinhua_room_updated_at();
+
+create or replace function public.touch_zhajinhua_room_from_child()
+returns trigger
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  target_room uuid;
+begin
+  target_room=case when tg_op='DELETE' then old.room_id else new.room_id end;
+  update public.rooms set updated_at=now() where id=target_room;
+  if tg_op='DELETE' then return old; end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_zhajinhua_players_touch_room on public.players;
+create trigger trg_zhajinhua_players_touch_room
+after insert or update or delete on public.players
+for each row execute function public.touch_zhajinhua_room_from_child();
+
+drop trigger if exists trg_zhajinhua_messages_touch_room on public.messages;
+create trigger trg_zhajinhua_messages_touch_room
+after insert or update or delete on public.messages
+for each row execute function public.touch_zhajinhua_room_from_child();
+
+create or replace function public.cleanup_stale_zhajinhua_rooms()
+returns integer
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  deleted_count integer;
+begin
+  delete from public.rooms
+  where updated_at < now()-interval '2 hours';
+  get diagnostics deleted_count=row_count;
+  return deleted_count;
+end;
+$$;
+revoke all on function public.cleanup_stale_zhajinhua_rooms() from public, anon, authenticated;
+grant execute on function public.cleanup_stale_zhajinhua_rooms() to postgres;
+
+create extension if not exists pg_cron;
+do $cron$
+declare
+  old_job record;
+begin
+  for old_job in
+    select jobid from cron.job where jobname='zhajinhua-room-cleanup'
+  loop
+    perform cron.unschedule(old_job.jobid);
+  end loop;
+  perform cron.schedule(
+    'zhajinhua-room-cleanup',
+    '*/15 * * * *',
+    'select public.cleanup_stale_zhajinhua_rooms();'
+  );
+end;
+$cron$;
 
 -- ============================================================
 -- 行级安全 RLS

@@ -85,6 +85,7 @@
   #actions .allin{ background:linear-gradient(#7b3fa0,#5f2d7d); }
   #actions .compare{ background:linear-gradient(#c0503a,#963a28); }
   #actions .start{ background:linear-gradient(#2ea86b,#1f7a4d); font-size:16px; }
+  #actions .exit{ background:#555; }
 
   #compare-pick, #raise-pick{ position:absolute; top:0; left:0; right:0; bottom:0; display:none;
                  background:rgba(0,0,0,.55); border-radius:170px; z-index:5; flex-direction:column; align-items:center; justify-content:center; }
@@ -101,6 +102,8 @@
   #result{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:10; align-items:center; justify-content:center; }
   #result.show{ display:flex; }
   #result .box{ background:#0f2a1c; border:2px solid var(--gold); padding:26px 40px; border-radius:16px; text-align:center; max-width:80vw; }
+  #result .box{ position:relative; }
+  #result .close{ position:absolute; top:8px; right:9px; width:30px; height:30px; padding:0; border:0; background:transparent; color:#9fd6b5; font-size:24px; cursor:pointer; }
   #result .win{ font-size:24px; color:var(--gold); margin-bottom:10px; }
   #result .detail{ font-size:14px; color:#cfe9d6; margin-bottom:16px; line-height:1.8; }
   #result .next-status{ font-size:13px; color:#9fd6b5; }
@@ -159,6 +162,7 @@
     <button id="btn-allin" class="allin" onclick="actAllIn()" disabled>押满</button>
     <button id="btn-compare" class="compare" onclick="pickCompare()" disabled>比牌</button>
     <button id="btn-fold" class="fold" onclick="actFold()" disabled>弃牌</button>
+    <button id="btn-exit" class="exit" onclick="leaveRoom()" style="display:none" disabled>退出房间</button>
   </div>
 
   <div id="log"></div>
@@ -169,7 +173,7 @@
       <button onclick="sendMessage()">发送</button>
     </div>
   </div>
-  <div id="result"><div class="box"><div class="win"></div><div class="detail"></div><div class="next-status"></div></div></div>
+  <div id="result"><div class="box"><button class="close" onclick="closeResult()" title="关闭">×</button><div class="win"></div><div class="detail"></div><div class="next-status"></div></div></div>
   <div id="join-toast"></div>
 
 <script>
@@ -229,7 +233,6 @@ let publicHands = {};       // seat -> {cards, typeName}，比牌时公开的手
 let autoStartTimer = null;
 let autoStartRound = -1;
 let shownSettleRound = -1;
-let publicRoomTimer = null;
 let publicRoomsById = new Map();
 let knownPlayerIds = new Set();
 let playersLoaded = false;
@@ -237,6 +240,10 @@ let joinToastTimer = null;
 let joinNoticeQueue = [];
 let joinToastActive = false;
 let isJoining = false;
+let isLeaving = false;
+let isActing = false;
+let actionCommitted = false;
+let hostTickRunning = false;
 
 function log(msg, cls=''){
   const el=document.createElement('div'); if(cls) el.className=cls; el.innerHTML=msg;
@@ -280,17 +287,15 @@ async function openPublicRooms(){
   document.getElementById('join-row').style.display='none';
   document.getElementById('public-rooms').style.display='block';
   await loadPublicRooms();
-  if(publicRoomTimer) clearInterval(publicRoomTimer);
-  publicRoomTimer = setInterval(loadPublicRooms, 3000);
 }
 async function loadPublicRooms(){
   const list = document.getElementById('public-room-list');
   list.innerHTML = '<div class="public-empty">正在搜索...</div>';
   const { data: rooms, error } = await sb.from('rooms')
-    .select('id,code,status,created_at')
+    .select('id,code,status,updated_at')
     .eq('is_public', true)
     .in('status', ['waiting','playing','finished'])
-    .order('created_at', { ascending:false })
+    .order('updated_at', { ascending:false })
     .limit(30);
   if(error){
     list.innerHTML = '<div class="public-empty">公开房间加载失败</div>';
@@ -302,9 +307,9 @@ async function loadPublicRooms(){
     return;
   }
   const roomIds = rooms.map(r=>r.id);
-  const { data: players } = await sb.from('players').select('room_id').in('room_id', roomIds);
+  const { data: players } = await sb.from('players').select('room_id,left_room').in('room_id', roomIds);
   const counts = {};
-  (players || []).forEach(p=>{ counts[p.room_id]=(counts[p.room_id]||0)+1; });
+  (players || []).filter(p=>!p.left_room).forEach(p=>{ counts[p.room_id]=(counts[p.room_id]||0)+1; });
   const available = rooms.filter(r=>(counts[r.id]||0)>0);
   publicRoomsById = new Map(available.map(r=>[r.id,r]));
   list.innerHTML = '';
@@ -323,8 +328,10 @@ async function loadPublicRooms(){
     meta.className = 'meta';
     meta.textContent = (statusText[r.status] || r.status) + ' · ' + (counts[r.id] || 0) + ' 人';
     const button = document.createElement('button');
-    button.textContent = '加入';
-    button.onclick = ()=>joinPublicRoom(r.id);
+    const full = (counts[r.id] || 0) >= MAX_SEATS;
+    button.textContent = full ? '已满' : '加入';
+    button.disabled = full;
+    if(!full) button.onclick = ()=>joinPublicRoom(r.id);
     row.append(code, meta, button);
     list.appendChild(row);
   });
@@ -344,17 +351,33 @@ async function joinRoomRecord(roomInfo){
   myRoomId = roomInfo.id;
   isHost = false;
   let joined = false;
+  let resumed = false;
   for(let attempt=0; attempt<5 && !joined; attempt++){
-    const { data: ps, error: seatsError } = await sb.from('players').select('seat').eq('room_id', myRoomId);
+    const { data: ps, error: seatsError } = await sb.from('players').select('id,user_id,seat,name,left_room').eq('room_id', myRoomId);
     if(seatsError){ alert('加入失败：'+seatsError.message); break; }
+    const existingMe = (ps || []).find(p=>p.user_id===myUserId && !p.left_room);
+    if(existingMe){
+      mySeat = existingMe.seat;
+      myName = existingMe.name;
+      joined = true;
+      resumed = true;
+      break;
+    }
+    if((ps || []).filter(p=>!p.left_room).length>=MAX_SEATS){
+      alert('房间已满，最多 '+MAX_SEATS+' 人');
+      break;
+    }
     const taken = (ps || []).map(p=>p.seat);
     let seat = 0; while(taken.includes(seat)) seat++;
     const { error } = await sb.from('players').insert({
-      room_id:myRoomId, user_id:myUserId, seat, name:myName, is_host:false, in_round:false
+      room_id:myRoomId, user_id:myUserId, seat, name:myName, is_host:false, in_round:false, left_room:false
     });
     if(!error){
       mySeat = seat;
       joined = true;
+    } else if(error.message && error.message.includes('ROOM_FULL')){
+      alert('房间已满，最多 '+MAX_SEATS+' 人');
+      break;
     } else if(error.code!=='23505'){
       alert('加入失败：'+error.message);
       break;
@@ -363,7 +386,7 @@ async function joinRoomRecord(roomInfo){
   if(!joined){ myRoomId=null; isJoining=false; return; }
   showRoomCode(roomInfo.code);
   enterGame();
-  showJoinNotice(myName);
+  if(!resumed) showJoinNotice(myName);
   isJoining = false;
 }
 function genCode(){
@@ -379,7 +402,7 @@ function showRoomCode(code){
 }
 
 function enterGame(){
-  if(publicRoomTimer){ clearInterval(publicRoomTimer); publicRoomTimer=null; }
+  document.getElementById('btn-exit').style.display='inline-block';
   document.getElementById('lobby').style.display='none';
   document.getElementById('table').style.display='block';
   document.getElementById('room-info').style.display='none';
@@ -413,6 +436,81 @@ function showNextJoinNotice(){
   }, 2200);
 }
 
+async function leaveRoom(){
+  if(isLeaving || !myRoomId) return;
+  const me = myPlayer();
+  if(!me) { location.reload(); return; }
+  isLeaving = true;
+  render();
+  try {
+    if(autoStartTimer){ clearTimeout(autoStartTimer); autoStartTimer=null; }
+    const others = roomPlayers.filter(p=>p.id!==me.id && !p.left_room);
+    if(me.is_host && room.status==='playing'){
+      await abortRoundForHostExit(me, others);
+    } else {
+      if(me.is_host && others.length>0){
+        const nextHost = others[0];
+        const { error } = await sb.from('players').update({ is_host:true }).eq('id', nextHost.id);
+        if(error) throw error;
+        await sb.from('rooms').update({ host_seat:nextHost.seat }).eq('id', myRoomId);
+      }
+      if(room.status==='playing' && me.in_round){
+        const { error } = await sb.from('players').update({
+          folded:true, left_room:true, is_host:false,
+          last_action:'fold', action_seq:Number(me.action_seq||0)+1
+        }).eq('id', me.id);
+        if(error) throw error;
+      } else {
+        const { error } = await sb.from('players').delete().eq('id', me.id);
+        if(error) throw error;
+      }
+      if(others.length===0){
+        await sb.from('rooms').delete().eq('id', myRoomId);
+      } else if(room.status!=='playing' && others.length<2){
+        await sb.from('rooms').update({ status:'waiting', current_turn:-1, message:'' }).eq('id', myRoomId);
+      }
+    }
+    location.reload();
+  } catch(e) {
+    alert('退出房间失败：'+(e.message || e));
+    isLeaving = false;
+    render();
+  }
+}
+async function abortRoundForHostExit(host, others){
+  if(hostState) hostState.settled = true;
+  if(hostTimer) clearInterval(hostTimer);
+  if(others.length===0){
+    const { error } = await sb.from('rooms').delete().eq('id', myRoomId);
+    if(error) throw error;
+    return;
+  }
+  for(const p of roomPlayers.filter(p=>p.in_round && p.id!==host.id)){
+    if(p.left_room){
+      const { error } = await sb.from('players').delete().eq('id', p.id);
+      if(error) throw error;
+      continue;
+    }
+    const { error } = await sb.from('players').update({
+      chips:p.chips+(p.total||0), bet:0, total:0, seen:false, folded:false,
+      compare_with:-1, in_round:false, all_in:false, last_action:'', action_seq:0
+    }).eq('id', p.id);
+    if(error) throw error;
+  }
+  const nextHost = others[0];
+  const { error: hostError } = await sb.from('players').update({ is_host:true }).eq('id', nextHost.id);
+  if(hostError) throw hostError;
+  const { error: handsError } = await sb.from('hands').update({ hand:null }).eq('room_id', myRoomId);
+  if(handsError) throw handsError;
+  const { error: roomError } = await sb.from('rooms').update({
+    status:'waiting', host_seat:nextHost.seat, current_turn:-1,
+    level:0, pot:0, message:''
+  }).eq('id', myRoomId);
+  if(roomError) throw roomError;
+  const { error: deleteError } = await sb.from('players').delete().eq('id', host.id);
+  if(deleteError) throw deleteError;
+}
+
 /* ================= 实时订阅 ================= */
 function subscribeRealtime(){
   const ch = sb.channel('room-'+myRoomId)
@@ -428,7 +526,9 @@ function subscribeRealtime(){
 async function refreshRoom(){
   const { data } = await sb.from('rooms').select().eq('id', myRoomId).single();
   if(!data) return;
+  const roundChanged = !room || room.round!==data.round;
   room = data;
+  if(roundChanged || room.status!=='playing' || room.current_turn!==mySeat) actionCommitted=false;
   // 解析结算/比牌结果（公开手牌）
   settleResult = null;
   if(room.message){
@@ -451,7 +551,7 @@ async function refreshRoom(){
     // 新一局开始：立即隐藏上一局结算，清空公开的牌
     document.getElementById('result').classList.remove('show');
     settleResult = null;
-    publicHands = {};
+    if(roundChanged || !room.message) publicHands = {};
   }
   syncAutoStart();
   render();
@@ -461,13 +561,13 @@ async function refreshPlayers(){
   const { data } = await sb.from('players').select().eq('room_id', myRoomId).order('seat');
   if(!data) return;
   if(playersLoaded){
-    data.filter(p=>!knownPlayerIds.has(p.id) && p.user_id!==myUserId)
+    data.filter(p=>!p.left_room && !knownPlayerIds.has(p.id) && p.user_id!==myUserId)
       .forEach(p=>showJoinNotice(p.name));
   }
-  knownPlayerIds = new Set(data.map(p=>p.id));
+  data.forEach(p=>knownPlayerIds.add(p.id));
   playersLoaded = true;
   roomPlayers = data;
-  const me = roomPlayers.find(p=>p.user_id===myUserId);
+  const me = roomPlayers.find(p=>p.user_id===myUserId && !p.left_room);
   if(me){
     mySeat = me.seat;
     isHost = !!me.is_host;
@@ -494,7 +594,7 @@ function syncAutoStart(){
       return;
     }
     room = latest;
-    const started = await startRound();
+    const started = await startRound(true);
     if(!started){
       autoStartRound = -1;
       syncAutoStart();
@@ -532,7 +632,7 @@ async function loadMessages(){
 }
 
 /* ================= 房主：开始新局 ================= */
-async function startRound(){
+async function startRound(silent=false){
   if(!isHost || isStarting) return false;
   isStarting = true;
   document.getElementById('btn-start').style.display='none';
@@ -542,10 +642,16 @@ async function startRound(){
     const { data: latestPlayers, error: playersError } = await sb.from('players').select().eq('room_id', myRoomId).order('seat');
     if(playersError) throw playersError;
     roomPlayers = latestPlayers || [];
-    const activePlayers = roomPlayers.filter(p=>p.chips>0);
+    const activePlayers = roomPlayers.filter(p=>!p.left_room && p.chips>0);
     if(activePlayers.length < 2){
-      await sb.from('rooms').update({ status:'waiting', current_turn:-1 }).eq('id', myRoomId);
+      const { error } = await sb.from('rooms').update({ status:'waiting', current_turn:-1 }).eq('id', myRoomId);
+      if(error) throw error;
       room = { ...room, status:'waiting', current_turn:-1 };
+      if(!silent) alert('至少需要 2 名有筹码的玩家');
+      return false;
+    }
+    if(activePlayers.length > MAX_SEATS){
+      if(!silent) alert('每桌最多 '+MAX_SEATS+' 人');
       return false;
     }
     // 洗牌发牌
@@ -557,31 +663,45 @@ async function startRound(){
     for(const s of seats) types[s] = evaluate(hands[s]);
     // 底注
     let pot = 0;
-    await sb.from('players').update({ in_round:false }).eq('room_id', myRoomId);
+    const { error: resetError } = await sb.from('players').update({
+      in_round:false, all_in:false, last_action:'', action_seq:0
+    }).eq('room_id', myRoomId);
+    if(resetError) throw resetError;
     for(const p of activePlayers){
       const ante = Math.min(BASE, p.chips);
       pot += ante;
-      await sb.from('players').update({
-        chips:p.chips-ante, bet:0, total:ante, seen:false, folded:false, compare_with:-1, in_round:true
+      const { error } = await sb.from('players').update({
+        chips:p.chips-ante, bet:0, total:ante, seen:false, folded:false,
+        compare_with:-1, in_round:true, all_in:p.chips-ante===0, last_action:'', action_seq:0
       }).eq('id', p.id);
+      if(error) throw error;
     }
     // 写手牌（RLS 保护：只有本人和房主能读）
     for(const p of activePlayers){
       const s = p.seat;
       const existing = await sb.from('hands').select('player_id').eq('player_id', p.id).maybeSingle();
+      if(existing.error) throw existing.error;
       if(existing.data){
-        await sb.from('hands').update({ hand:hands[s] }).eq('player_id', p.id);
+        const { error } = await sb.from('hands').update({ hand:hands[s] }).eq('player_id', p.id);
+        if(error) throw error;
       } else {
-        await sb.from('hands').insert({ player_id:p.id, user_id:p.user_id, room_id:myRoomId, hand:hands[s] });
+        const { error } = await sb.from('hands').insert({ player_id:p.id, user_id:p.user_id, room_id:myRoomId, hand:hands[s] });
+        if(error) throw error;
       }
     }
     // 等待公共玩家状态完成重置，避免房主轮询读取上一局的 bet/folded。
     await refreshPlayers();
     // 房主权威状态（含快照，用于检测玩家操作）
     hostState = { hands, types, level:1, pot,
-      turn:seats[0], lastRaiser:seats[0], actedThisRound:0,
-      betSnap:{}, seenSnap:{}, settled:false };
-    for(const s of seats){ hostState.betSnap[s]=0; hostState.seenSnap[s]=false; }
+      turn:seats[0], actedSeats:new Set(),
+      betSnap:{}, chipSnap:{}, seenSnap:{}, actionSnap:{}, settled:false };
+    for(const s of seats){
+      const p = roomPlayers.find(x=>x.seat===s);
+      hostState.betSnap[s]=p ? p.bet : 0;
+      hostState.chipSnap[s]=p ? p.chips : 0;
+      hostState.seenSnap[s]=p ? p.seen : false;
+      hostState.actionSnap[s]=p ? p.action_seq : 0;
+    }
     // 更新房间状态
     const { data: nextRoom, error: roomError } = await sb.from('rooms').update({
       status:'playing', current_turn:hostState.turn, level:1, pot,
@@ -595,7 +715,7 @@ async function startRound(){
     render();
     return true;
   } catch(e) {
-    alert('开始游戏出错：' + (e.message || e));
+    if(!silent) alert('开始游戏出错：' + (e.message || e));
     console.error(e);
     return false;
   } finally {
@@ -609,79 +729,102 @@ function needToCallOf(p, level){
   return level*unit - p.bet;
 }
 async function hostTick(){
-  if(!isHost || !hostState || hostState.settled) return;
-  const roundPlayers = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat]);
+  if(!isHost || !hostState || hostState.settled || hostTickRunning) return;
+  hostTickRunning = true;
+  try {
+    await hostTickOnce();
+  } catch(e) {
+    console.error('房主推进失败', e);
+  } finally {
+    hostTickRunning = false;
+  }
+}
+function currentRoundPlayers(){
+  return roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat]);
+}
+async function hostTickOnce(){
+  const roundPlayers = currentRoundPlayers();
   const alive = roundPlayers.filter(p=>!p.folded);
-  if(alive.length===1){ await hostSettle(); return; }
+  if(alive.length<=1){ await hostSettle(); return; }
 
   const cur = roundPlayers.find(p=>p.seat===hostState.turn);
-  if(!cur){ advanceTurn(hostState.turn); await updateRoomState(); return; }
-  if(cur.folded){ advanceTurn(cur.seat); await updateRoomState(); return; }
-
-  // 筹码不足自动认输
-  if(cur.chips<=0 && needToCallOf(cur, hostState.level)>0){
-    await sb.from('players').update({ folded:true }).eq('id', cur.id);
-    advanceTurn(cur.seat);
+  if(!cur || cur.folded || cur.all_in || cur.left_room){
+    if(await settleIfBettingComplete(roundPlayers)) return;
+    advanceTurn(cur ? cur.seat : hostState.turn);
     await updateRoomState();
     return;
   }
 
-  // 比牌请求（玩家主动比牌）
-  if((cur.compare_with ?? -1) >= 0){
-    await hostCompare(cur);
-    return;
-  }
-
-  // 快照对比检测玩家操作
+  const actionSeq = cur.action_seq || 0;
+  if(actionSeq <= (hostState.actionSnap[cur.seat] || 0)) return;
   const prevBet = hostState.betSnap[cur.seat] ?? 0;
+  const prevChips = hostState.chipSnap[cur.seat] ?? cur.chips;
   const prevSeen = hostState.seenSnap[cur.seat] ?? false;
-  if(cur.bet===prevBet && cur.seen===prevSeen) return; // 还没行动
-
   const delta = cur.bet - prevBet;
-  if(delta>0) hostState.pot += delta;
   hostState.betSnap[cur.seat]=cur.bet;
+  hostState.chipSnap[cur.seat]=cur.chips;
   hostState.seenSnap[cur.seat]=cur.seen;
+  hostState.actionSnap[cur.seat]=actionSeq;
 
-  // 看牌动作：不推进回合，玩家看牌后继续跟注/加注/弃牌
-  if(cur.seen && !prevSeen){
+  if(cur.last_action==='see' || (cur.seen && !prevSeen && !cur.last_action)){
     await updateRoomState();
     return;
   }
 
-  // 跟注 or 加注
-  const need = needToCallOf(cur, hostState.level);
-  if(delta>need && delta>0){
-    hostState.level = Math.max(1, Math.ceil(cur.bet / (cur.seen?BASE*SEE_MULT:BASE)));
-    hostState.lastRaiser = cur.seat;
-    hostState.actedThisRound = 0;
-  } else {
-    hostState.actedThisRound++;
+  if(cur.last_action==='compare'){
+    await hostCompare(cur, Math.max(0, prevChips-cur.chips));
+    return;
   }
 
-  // 全员跟满 → 摊牌
-  const allMatched = roundPlayers.every(p=>p.folded || needToCallOf(p, hostState.level)<=0);
-  if(allMatched && hostState.actedThisRound>=alive.length){ await hostSettle(); return; }
+  if(delta>0) hostState.pot += delta;
+  const unit = cur.seen ? BASE*SEE_MULT : BASE;
+  const oldTarget = hostState.level * unit;
+  const proposedLevel = Math.floor(cur.bet/unit);
+  const raised = (cur.last_action==='raise' || cur.last_action==='allin') && proposedLevel>hostState.level;
+  if(raised){
+    hostState.level = Math.max(1, proposedLevel);
+    hostState.actedSeats.clear();
+    if(!cur.all_in) hostState.actedSeats.add(cur.seat);
+  } else {
+    hostState.actedSeats.add(cur.seat);
+  }
 
+  if(await settleIfBettingComplete(roundPlayers)) return;
   advanceTurn(cur.seat);
   await updateRoomState();
+}
+async function settleIfBettingComplete(roundPlayers=currentRoundPlayers()){
+  const alive = roundPlayers.filter(p=>!p.folded);
+  if(alive.length<=1){ await hostSettle(); return true; }
+  const actionable = alive.filter(p=>!p.all_in && !p.left_room);
+  if(actionable.length===0){ await hostSettle(); return true; }
+  const allMatched = actionable.every(p=>needToCallOf(p, hostState.level)<=0);
+  const allActed = actionable.every(p=>hostState.actedSeats.has(p.seat));
+  if(allMatched && allActed){ await hostSettle(); return true; }
+  return false;
 }
 function advanceTurn(fromSeat){
   hostState.turn = nextSeat(fromSeat);
 }
-async function hostCompare(cur){
-  // 比牌手续费并入底池
-  const delta = cur.bet - (hostState.betSnap[cur.seat] ?? 0);
-  if(delta > 0){ hostState.pot += delta; hostState.betSnap[cur.seat] = cur.bet; }
-  const target = roomPlayers.find(x=>x.seat===cur.compare_with && x.in_round);
+async function hostCompare(cur, fee){
+  if(fee>0) hostState.pot += fee;
+  const target = roomPlayers.find(x=>x.seat===cur.compare_with && x.in_round && !x.left_room);
   if(!target || target.folded){
     await sb.from('players').update({ compare_with: -1 }).eq('id', cur.id);
+    hostState.actedSeats.add(cur.seat);
+    if(await settleIfBettingComplete()) return;
+    advanceTurn(cur.seat);
+    await updateRoomState();
     return;
   }
   const meWin = compare(hostState.types[cur.seat], hostState.types[target.seat]) >= 0;
   const loser = meWin ? target : cur;
-  await sb.from('players').update({ folded:true }).eq('id', loser.id);
+  const { error: foldError } = await sb.from('players').update({ folded:true }).eq('id', loser.id);
+  if(foldError) throw foldError;
+  loser.folded = true;
   // 重置比牌标记
-  await sb.from('players').update({ compare_with: -1 }).eq('id', cur.id);
+  const { error: resetError } = await sb.from('players').update({ compare_with: -1 }).eq('id', cur.id);
+  if(resetError) throw resetError;
   // 公开双方手牌
   const result = {
     type:'compare',
@@ -690,10 +833,10 @@ async function hostCompare(cur){
       { seat: target.seat, name: target.name, cards: hostState.hands[target.seat], typeName: hostState.types[target.seat].name },
     ],
   };
-  await sb.from('rooms').update({ message: JSON.stringify(result) }).eq('id', myRoomId);
-  // 比牌后检查是否只剩一人
-  const alive = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat] && !p.folded);
-  if(alive.length<=1){ await hostSettle(); return; }
+  const { error: roomError } = await sb.from('rooms').update({ message: JSON.stringify(result) }).eq('id', myRoomId);
+  if(roomError) throw roomError;
+  if(!cur.folded && !cur.all_in) hostState.actedSeats.add(cur.seat);
+  if(await settleIfBettingComplete()) return;
   advanceTurn(cur.seat);
   await updateRoomState();
 }
@@ -705,40 +848,59 @@ async function updateRoomState(){
 function nextSeat(seat){
   const seats = Object.keys(hostState.hands).map(Number).sort((a,b)=>a-b);
   const idx = seats.indexOf(seat);
-  return seats[(idx+1) % seats.length];
+  for(let offset=1; offset<=seats.length; offset++){
+    const next = seats[(Math.max(idx,0)+offset) % seats.length];
+    const p = roomPlayers.find(x=>x.seat===next);
+    if(p && p.in_round && !p.folded && !p.all_in && !p.left_room) return next;
+  }
+  return -1;
 }
 async function hostSettle(){
   hostState.settled = true;
   if(hostTimer) clearInterval(hostTimer);
-  const roundPlayers = roomPlayers.filter(p=>p.in_round && hostState.hands[p.seat]);
+  const roundPlayers = currentRoundPlayers();
   const alive = roundPlayers.filter(p=>!p.folded);
-  let winner = null;
-  for(const p of alive){
-    const t = hostState.types[p.seat];
-    if(!winner || compare(t, hostState.types[winner.seat])>0) winner = p;
+  if(alive.length===0){
+    console.error('结算失败：没有未弃牌玩家');
+    hostState.settled = false;
+    return;
   }
-  const win = hostState.pot;
-  await sb.from('players').update({ chips: winner.chips + win }).eq('id', winner.id);
+  const payouts = calculateSidePotPayouts(roundPlayers);
+  const winners = roundPlayers
+    .filter(p=>(payouts.get(p.seat)||0)>0)
+    .map(p=>({ seat:p.seat, name:p.name, amount:payouts.get(p.seat) }))
+    .sort((a,b)=>b.amount-a.amount || a.seat-b.seat);
+  for(const p of roundPlayers){
+    const amount = payouts.get(p.seat) || 0;
+    if(amount<=0) continue;
+    const { error } = await sb.from('players').update({ chips:p.chips+amount }).eq('id', p.id);
+    if(error) throw error;
+  }
+  const primary = winners[0];
   // 公开结果到 message 字段（所有玩家可读，绕过 hands 表 RLS）
   const result = {
-    type:'settle', winner:winner.name, winnerSeat:winner.seat, amount:win,
+    type:'settle', winner:primary.name, winnerSeat:primary.seat, amount:primary.amount, winners,
     players: roundPlayers.map(p=>({
       seat:p.seat, name:p.name, folded:p.folded,
       cards: hostState.hands[p.seat],
       typeName: hostState.types[p.seat].name,
+      payout:payouts.get(p.seat)||0,
     })),
   };
-  // 破产玩家（筹码输光）自动离开房间；胜者必赢筹码，排除
-  const broke = roundPlayers.filter(p=>p.chips<=0 && p.id !== winner.id);
-  for(const p of broke){
+  const removeIds = new Set(roomPlayers
+    .filter(p=>p.left_room || (p.in_round && p.chips+(payouts.get(p.seat)||0)<=0))
+    .map(p=>p.id));
+  for(const p of roomPlayers.filter(p=>removeIds.has(p.id))){
     await sb.from('players').delete().eq('id', p.id);
   }
-  const remaining = roomPlayers.filter(p=>p.chips>0 || p.id === winner.id);
+  const remaining = roomPlayers.filter(p=>!removeIds.has(p.id) && !p.left_room);
   // 房主破产 → 房主转移给剩余第一个玩家
   if(!remaining.some(p=>p.is_host) && remaining.length>0){
     await sb.from('players').update({ is_host:true }).eq('id', remaining[0].id);
   }
-  await sb.from('players').update({ in_round:false }).eq('room_id', myRoomId).eq('in_round', true);
+  await sb.from('players').update({
+    in_round:false, all_in:false, last_action:''
+  }).eq('room_id', myRoomId).eq('in_round', true);
   // 有筹码玩家不足 2 人 → 房间回到等待，新玩家可加入；否则可继续下一局
   const finalStatus = remaining.length>=2 ? 'finished' : 'waiting';
   const { data: finishedRoom } = await sb.from('rooms').update({
@@ -749,31 +911,94 @@ async function hostSettle(){
   await refreshPlayers();
   syncAutoStart();
 }
+function calculateSidePotPayouts(players){
+  const payouts = new Map(players.map(p=>[p.seat,0]));
+  const levels = [...new Set(players.map(p=>Math.max(0,p.total||0)).filter(Boolean))].sort((a,b)=>a-b);
+  let previous = 0;
+  for(const level of levels){
+    const contributors = players.filter(p=>(p.total||0)>=level);
+    const amount = (level-previous)*contributors.length;
+    previous = level;
+    if(amount<=0) continue;
+    let eligible = contributors.filter(p=>!p.folded);
+    if(eligible.length===0) eligible = players.filter(p=>!p.folded);
+    let best = eligible[0];
+    for(const p of eligible.slice(1)){
+      if(compare(hostState.types[p.seat], hostState.types[best.seat])>0) best=p;
+    }
+    const tied = eligible.filter(p=>compare(hostState.types[p.seat], hostState.types[best.seat])===0)
+      .sort((a,b)=>a.seat-b.seat);
+    const share = Math.floor(amount/tied.length);
+    let remainder = amount%tied.length;
+    tied.forEach(p=>{
+      payouts.set(p.seat,(payouts.get(p.seat)||0)+share+(remainder>0?1:0));
+      if(remainder>0) remainder--;
+    });
+  }
+  return payouts;
+}
 
 /* ================= 玩家操作 ================= */
-function myPlayer(){ return roomPlayers.find(p=>p.user_id===myUserId); }
+function myPlayer(){ return roomPlayers.find(p=>p.user_id===myUserId && !p.left_room); }
 function myTurnNow(){
   return room && room.status==='playing' && room.current_turn===mySeat
-    && myPlayer() && myPlayer().in_round && !myPlayer().folded;
+    && myPlayer() && myPlayer().in_round && !myPlayer().folded && !myPlayer().all_in;
+}
+function canActNow(){ return myTurnNow() && !actionCommitted && !isActing; }
+async function submitAction(changes, action, consumesTurn=true){
+  if(!canActNow()) return false;
+  const p = myPlayer();
+  if(!p) return false;
+  isActing = true;
+  render();
+  try {
+    const payload = {
+      ...changes,
+      last_action:action,
+      action_seq:Number(p.action_seq || 0)+1
+    };
+    const { error } = await sb.from('players').update(payload)
+      .eq('id', p.id).eq('user_id', myUserId);
+    if(error) throw error;
+    if(consumesTurn) actionCommitted = true;
+    await refreshPlayers();
+    return true;
+  } catch(e) {
+    alert('操作失败：'+(e.message || e));
+    return false;
+  } finally {
+    isActing = false;
+    render();
+  }
 }
 async function actSee(){
-  const p = myPlayer(); if(!p) return;
-  await sb.from('players').update({ seen:true }).eq('id', p.id);
+  const p = myPlayer(); if(!p || p.seen) return;
+  await submitAction({ seen:true }, 'see', false);
 }
 async function actCall(){
   const p = myPlayer(); if(!p) return;
-  const need = needToCallOf(p, room.level);
+  const need = Math.max(0, needToCallOf(p, room.level));
   const pay = Math.min(need, p.chips);
-  await sb.from('players').update({ bet:p.bet+pay, chips:p.chips-pay }).eq('id', p.id);
-  // 通知房主（房主通过轮询检测 bet 变化推进）
+  const allIn = pay===p.chips && p.chips>0;
+  await submitAction({
+    bet:p.bet+pay,
+    chips:p.chips-pay,
+    total:p.total+pay,
+    all_in:allIn || p.all_in
+  }, allIn ? 'allin' : 'call');
 }
 async function actFold(){
-  const p = myPlayer(); if(!p) return;
-  await sb.from('players').update({ folded:true }).eq('id', p.id);
+  await submitAction({ folded:true }, 'fold');
 }
 async function actAllIn(){
   const p = myPlayer(); if(!p) return;
-  await sb.from('players').update({ bet:p.bet+p.chips, chips:0 }).eq('id', p.id);
+  if(p.chips<=0) return;
+  await submitAction({
+    bet:p.bet+p.chips,
+    chips:0,
+    total:p.total+p.chips,
+    all_in:true
+  }, 'allin');
 }
 function actRaise(){
   const p = myPlayer(); if(!p) return;
@@ -799,7 +1024,13 @@ async function confirmRaise(newLevel){
   let pay = target - p.bet;
   if(pay<=0) return;
   if(pay>p.chips) pay=p.chips;
-  await sb.from('players').update({ bet:p.bet+pay, chips:p.chips-pay }).eq('id', p.id);
+  const allIn = pay===p.chips;
+  await submitAction({
+    bet:p.bet+pay,
+    chips:p.chips-pay,
+    total:p.total+pay,
+    all_in:allIn || p.all_in
+  }, allIn ? 'allin' : 'raise');
 }
 function confirmCustomRaise(){
   const v=parseInt(document.getElementById('raise-custom').value,10);
@@ -808,10 +1039,12 @@ function confirmCustomRaise(){
 }
 function cancelRaise(){ document.getElementById('raise-pick').classList.remove('show'); }
 function pickCompare(){
+  const me = myPlayer();
+  if(!me || me.chips<COMPARE_FEE){ alert('筹码不足，无法支付比牌费用'); return; }
   const box=document.getElementById('compare-pick'), opts=box.querySelector('.opts');
   opts.innerHTML='';
   roomPlayers.forEach(p=>{
-    if(p.seat===mySeat || !p.in_round || p.folded) return;
+    if(p.seat===mySeat || !p.in_round || p.folded || p.left_room) return;
     const b=document.createElement('button');
     b.textContent=p.name;
     b.onclick=()=>doCompare(p.seat);
@@ -823,16 +1056,19 @@ function cancelCompare(){ document.getElementById('compare-pick').classList.remo
 async function doCompare(targetSeat){
   document.getElementById('compare-pick').classList.remove('show');
   const p = myPlayer(); if(!p) return;
-  // 扣比牌手续费 + 标记比牌目标（房主检测后判定）
-  const fee = Math.min(COMPARE_FEE, p.chips);
-  await sb.from('players').update({ bet: p.bet + fee, chips: p.chips - fee, compare_with: targetSeat }).eq('id', p.id);
+  if(p.chips<COMPARE_FEE) return;
+  await submitAction({
+    chips:p.chips-COMPARE_FEE,
+    total:p.total+COMPARE_FEE,
+    compare_with:targetSeat
+  }, 'compare');
 }
 
 /* ================= 渲染 ================= */
 function render(){
   if(!room) return;
   // 房主开始新局按钮
-  if(isHost && room.status==='waiting' && roomPlayers.filter(p=>p.chips>0).length>=2){
+  if(isHost && room.status==='waiting' && roomPlayers.filter(p=>!p.left_room && p.chips>0).length>=2){
     document.getElementById('btn-start').style.display='inline-block';
   } else {
     document.getElementById('btn-start').style.display='none';
@@ -842,7 +1078,7 @@ function render(){
   // 座位（动态创建：自己始终在最底部，其余按加入顺序排）
   const seatsEl = document.getElementById('seats');
   seatsEl.innerHTML = '';
-  const ordered = [...roomPlayers].sort((a,b)=>{
+  const ordered = roomPlayers.filter(p=>!p.left_room).sort((a,b)=>{
     if(a.user_id===myUserId) return -1;
     if(b.user_id===myUserId) return 1;
     return a.seat - b.seat;
@@ -894,14 +1130,15 @@ function render(){
     seatsEl.appendChild(seatEl);
   });
   // 操作按钮
-  const mt = myTurnNow();
+  const mt = canActNow();
+  const p = myPlayer();
   document.getElementById('btn-see').disabled = !(mt && myPlayer() && !myPlayer().seen);
   document.getElementById('btn-call').disabled = !mt;
   document.getElementById('btn-raise').disabled = !mt;
   document.getElementById('btn-allin').disabled = !mt;
   document.getElementById('btn-fold').disabled = !mt;
-  document.getElementById('btn-compare').disabled = !mt;
-  const p = myPlayer();
+  document.getElementById('btn-compare').disabled = !(mt && p && p.chips>=COMPARE_FEE);
+  document.getElementById('btn-exit').disabled = isLeaving || !p;
   document.getElementById('btn-call').textContent = (p && needToCallOf(p, room.level)<=0) ? '过牌' : '跟注';
 }
 function makeCard(c){
@@ -913,19 +1150,23 @@ function makeCard(c){
 function showResult(){
   if(!settleResult) return;
   const el = document.getElementById('result');
-  el.querySelector('.win').textContent = settleResult.winnerSeat===mySeat ? '🎉 你赢了！' : '本局结束';
+  const winners = settleResult.winners || [{
+    seat:settleResult.winnerSeat, name:settleResult.winner, amount:settleResult.amount
+  }];
+  el.querySelector('.win').textContent = winners.some(w=>w.seat===mySeat) ? '🎉 你赢了！' : '本局结束';
   let d = '';
   settleResult.players.forEach(p=>{
     const cardsTxt = (p.cards||[]).map(c=>RANK_NAME[c.rank]+c.suit).join(' ');
-    d += `<div>${p.name}：${cardsTxt}（${p.typeName}）${p.folded?' · 弃牌':''}</div>`;
+    d += `<div>${p.name}：${cardsTxt}（${p.typeName}）${p.folded?' · 弃牌':''}${p.payout?' · +'+p.payout:''}</div>`;
   });
-  d += `<div style="margin-top:6px;color:var(--gold)">胜者：${settleResult.winner} · +${settleResult.amount} 筹码</div>`;
+  d += `<div style="margin-top:6px;color:var(--gold)">胜者：${winners.map(w=>w.name+' +'+w.amount).join('，')}</div>`;
   el.querySelector('.detail').innerHTML = d;
   el.querySelector('.next-status').textContent = room && room.status==='finished'
     ? '下一局即将自动开始'
     : '等待更多玩家加入';
   el.classList.add('show');
 }
+function closeResult(){ document.getElementById('result').classList.remove('show'); }
 </script>
 </body>
 </html>
