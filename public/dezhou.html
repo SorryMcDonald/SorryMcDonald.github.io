@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>德州扑克 · 联机牌桌</title>
-  <link rel="stylesheet" href="/dezhou.css">
+  <link rel="stylesheet" href="./dezhou.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/dezhou.html"><span class="brand-suit">♠</span><strong>德州扑克</strong><span>SERVER TABLE</span></a>
+    <a class="brand" href="./dezhou.html"><span class="brand-suit">♠</span><strong>德州扑克</strong><span>SUPABASE TABLE</span></a>
     <nav>
       <button id="leaderboardButton" class="quiet" type="button">排行榜</button>
       <button id="refillButton" class="quiet" type="button" hidden>领取补给</button>
@@ -21,13 +21,10 @@
     <section id="authView" class="auth-view">
       <div class="auth-title"><span class="eyebrow">NO-LIMIT HOLD'EM</span><h1>德州扑克</h1><p>标准盲注 · 后端发牌 · 多人边池</p></div>
       <form id="authForm" class="auth-form">
-        <h2 id="authTitle">登录牌桌</h2>
-        <label>邮箱<input id="emailInput" type="email" autocomplete="email" required></label>
-        <label id="nicknameField" hidden>昵称<input id="nicknameInput" maxlength="24" autocomplete="nickname"></label>
-        <label>密码<input id="passwordInput" type="password" minlength="8" autocomplete="current-password" required></label>
-        <button id="authSubmit" class="primary" type="submit">登录</button>
+        <h2 id="authTitle">进入牌桌</h2>
+        <label>昵称<input id="nicknameInput" maxlength="24" autocomplete="nickname" required></label>
+        <button id="authSubmit" class="primary" type="submit">匿名进入</button>
         <p id="authError" class="error" role="alert"></p>
-        <button id="authModeToggle" class="text-button" type="button">没有账号？注册</button>
       </form>
     </section>
 
@@ -126,6 +123,6 @@
   </dialog>
 
   <footer>仅供虚拟娱乐，禁止现金赌博和线下结算</footer>
-  <script type="module" src="/dezhou.js"></script>
+  <script type="module" src="./dezhou.js"></script>
 </body>
 </html>

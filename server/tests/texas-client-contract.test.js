@@ -2,15 +2,16 @@ import { describe,expect,it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
 describe('Texas browser client contract',() => {
-  it('uses only the local Texas API and server-provided action permissions',async() => {
+  it('uses Supabase RPC, Realtime and server-provided action permissions',async() => {
     const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
     const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');
-    expect(html+js).not.toMatch(/supabase|SUPABASE_URL|SUPABASE_ANON_KEY/i);
-    expect(js).toContain('/api/texas');
-    expect(js).toContain('game=texas');
+    expect(html).toContain('SUPABASE TABLE');
+    expect(js).toContain("supabase.rpc(name,args)");
+    expect(js).toContain("table:'texas_sb_rooms'");
+    expect(js).toContain('signInAnonymously');
+    expect(js).not.toMatch(/fetch\(|new WebSocket|setInterval\(/);
     expect(js).toContain('room.allowedActions');
     expect(js).toContain("$('refreshButton').addEventListener('click',loadRooms)");
-    expect(js).not.toMatch(/setInterval\([^)]*loadRooms/);
   });
 
   it('provides manual next-hand, leave, rebuy and responsive seat controls',async() => {
@@ -21,5 +22,15 @@ describe('Texas browser client contract',() => {
     expect(js).toContain("sessionStorage.setItem('texas.roomId'");
     expect(js).toContain('function seatPosition');
     expect(css).toMatch(/@media\(max-width:620px\)/);
+  });
+
+  it('keeps Supabase credentials limited to the browser-safe anon key',async() => {
+    const config=await readFile(new URL('../../public/supabase-config.js',import.meta.url),'utf8');
+    expect(config).toContain('SUPABASE_URL');
+    expect(config).toContain('SUPABASE_ANON_KEY');
+    const token=config.match(/SUPABASE_ANON_KEY='([^']+)'/)?.[1];
+    expect(token).toBeTruthy();
+    const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString('utf8'));
+    expect(claims.role).toBe('anon');
   });
 });
