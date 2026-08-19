@@ -33,6 +33,14 @@ describe('Texas Supabase SQL contract',() => {
     expect(sql).toContain('p_expected_version<>r.version');
   });
 
+  it('automatically restores an exhausted balance and records leaderboard resets',async() => {
+    const sql=await loadSql();
+    expect(sql).toContain('reset_count integer not null default 0');
+    expect(sql).toContain('set beans=10000,reset_count=reset_count+1');
+    expect(sql).toContain("p.in_hand and r.status in ('preflop','flop','turn','river','showdown')");
+    expect(sql).toContain("'resetCount',reset_count");
+  });
+
   it('contains no action timeout or automatic fold path',async() => {
     const sql=await loadSql();
     expect(sql).not.toMatch(/action_timeout|turn_deadline|auto(?:matic)?_fold|超时弃牌/i);

@@ -12,9 +12,13 @@ create table if not exists public.texas_sb_profiles (
   beans bigint not null default 10000 check (beans >= 0),
   wins integer not null default 0 check (wins >= 0),
   losses integer not null default 0 check (losses >= 0),
+  reset_count integer not null default 0 check (reset_count >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.texas_sb_profiles
+  add column if not exists reset_count integer not null default 0 check (reset_count >= 0);
 
 create table if not exists public.texas_sb_rooms (
   id uuid primary key default gen_random_uuid(),
@@ -276,6 +280,26 @@ begin
 end;
 $$;
 
+create or replace function public._texas_sb_auto_refill(p_uid uuid)
+returns boolean language plpgsql security definer set search_path=public,pg_temp as $$
+begin
+  update public.texas_sb_profiles pr
+    set beans=10000,reset_count=reset_count+1
+    where pr.user_id=p_uid and pr.beans=0
+      and not exists(
+        select 1
+        from public.texas_sb_players p
+        join public.texas_sb_rooms r on r.id=p.room_id
+        where p.user_id=p_uid and not p.left_room
+          and (
+            p.stack>0
+            or (p.in_hand and r.status in ('preflop','flop','turn','river','showdown'))
+          )
+      );
+  return found;
+end;
+$$;
+
 create or replace function public._texas_sb_can_view_room(p_room uuid)
 returns boolean language sql stable security definer set search_path=public,pg_temp as $$
   select exists(
@@ -297,14 +321,20 @@ begin
   insert into public.texas_sb_profiles(user_id,nickname)
   values(v_uid,coalesce(v_name,'玩家'||right(replace(v_uid::text,'-',''),6)))
   on conflict(user_id) do update set nickname=coalesce(v_name,public.texas_sb_profiles.nickname);
-  return (select jsonb_build_object('id',user_id,'nickname',nickname,'beans',beans,'wins',wins,'losses',losses) from public.texas_sb_profiles where user_id=v_uid);
+  perform public._texas_sb_auto_refill(v_uid);
+  return (select jsonb_build_object('id',user_id,'nickname',nickname,'beans',beans,'wins',wins,'losses',losses,'resetCount',reset_count) from public.texas_sb_profiles where user_id=v_uid);
 end;
 $$;
 
 create or replace function public.texas_sb_me()
-returns jsonb language sql security definer set search_path=public,pg_temp as $$
-  select jsonb_build_object('id',p.user_id,'nickname',p.nickname,'beans',p.beans,'wins',p.wins,'losses',p.losses)
-  from public.texas_sb_profiles p where p.user_id=public._texas_sb_uid();
+returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_uid uuid:=public._texas_sb_uid(); v_result jsonb;
+begin
+  perform public._texas_sb_auto_refill(v_uid);
+  select jsonb_build_object('id',p.user_id,'nickname',p.nickname,'beans',p.beans,'wins',p.wins,'losses',p.losses,'resetCount',p.reset_count)
+    into v_result from public.texas_sb_profiles p where p.user_id=v_uid;
+  return v_result;
+end;
 $$;
 
 create or replace function public.texas_sb_list_rooms()
@@ -747,9 +777,7 @@ create or replace function public.texas_sb_refill()
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_uid uuid:=public._texas_sb_uid();
 begin
-  update public.texas_sb_profiles set beans=2000
-    where user_id=v_uid and beans=0
-      and not exists(select 1 from public.texas_sb_players where user_id=v_uid and not left_room and stack>0);
+  perform public._texas_sb_auto_refill(v_uid);
   return public.texas_sb_me();
 end;
 $$;
@@ -757,11 +785,11 @@ $$;
 create or replace function public.texas_sb_leaderboard(p_kind text default 'wins')
 returns jsonb language sql security definer set search_path=public,pg_temp as $$
   with ranked as (
-    select row_number() over(order by case when p_kind='losses' then losses else wins end desc,beans desc,nickname) rank,
-      nickname,beans,wins,losses,
+    select row_number() over(order by case when p_kind='losses' then losses else wins end desc,reset_count asc,beans desc,nickname) rank,
+      nickname,beans,wins,losses,reset_count,
       case when p_kind='losses' then '散财童子' when wins>=50 then '牌局之王' when wins>=20 then '常胜将军' else '牌桌新秀' end title
     from public.texas_sb_profiles
-  ) select coalesce(jsonb_agg(jsonb_build_object('rank',rank,'nickname',nickname,'beans',beans,'wins',wins,'losses',losses,'title',title) order by rank),'[]'::jsonb)
+  ) select coalesce(jsonb_agg(jsonb_build_object('rank',rank,'nickname',nickname,'beans',beans,'wins',wins,'losses',losses,'resetCount',reset_count,'title',title) order by rank),'[]'::jsonb)
   from (select * from ranked where rank<=100)q;
 $$;
 
