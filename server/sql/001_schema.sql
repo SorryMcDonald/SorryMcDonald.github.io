@@ -13,7 +13,7 @@ create table if not exists users (
   music_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   effects_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   animation_mode TEXT NOT NULL DEFAULT 'light'
-    CHECK (animation_mode IN ('light', 'cinematic')),
+    CHECK (animation_mode IN ('light', 'cinematic', 'disabled')),
   refill_generation BIGINT NOT NULL DEFAULT 0 CHECK (refill_generation >= 0),
   last_zero_generation BIGINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

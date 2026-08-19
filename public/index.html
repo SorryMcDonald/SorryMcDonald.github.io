@@ -6,53 +6,133 @@
   <title>炸金花 · 虚拟娱乐牌桌</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body data-motion="light">
   <div class="app-shell">
     <header class="topbar">
-      <div><span class="brand-mark">♠</span><span class="brand-name">炸金花</span><span class="brand-sub">虚拟娱乐牌桌</span></div>
-      <nav class="top-actions"><button id="leaderboardButton" class="ghost-button">排行榜</button><button id="settingsButton" class="ghost-button">设置</button><span id="accountLabel" class="account-label">未登录</span></nav>
+      <div class="brand"><span class="brand-mark">♠</span><span class="brand-name">炸金花</span><span class="brand-sub">虚拟娱乐牌桌</span></div>
+      <nav class="top-actions" aria-label="账号导航">
+        <button id="leaderboardButton" class="ghost-button" type="button">排行榜</button>
+        <button id="settingsButton" class="ghost-button" type="button">设置</button>
+        <div class="account-summary"><span id="accountLabel" class="account-label">未登录</span><span id="accountTitles" class="account-titles"></span></div>
+      </nav>
     </header>
     <div id="globalTicker" class="ticker" aria-live="polite"></div>
+
     <main>
       <section id="authView" class="auth-view">
-        <div class="auth-copy"><p class="eyebrow">SERVER TABLE / 01</p><h1>炸 金 花 · 联机</h1><p>三张牌 · 房号约局</p></div>
+        <div class="auth-copy"><h1>炸 金 花 · 联机</h1><p>三张牌 · 房号约局</p></div>
         <form id="authForm" class="auth-panel">
-          <div class="auth-panel-head">
-            <h2 id="authTitle">欢迎回来</h2>
-            <p id="authSubtitle">登录您的账号以继续</p>
-          </div>
+          <div class="auth-panel-head"><h2 id="authTitle">欢迎回来</h2><p id="authSubtitle">登录您的账号以继续</p></div>
           <label>邮箱<input id="emailInput" type="email" autocomplete="email" placeholder="请输入邮箱" required></label>
-          <label id="nicknameField" hidden>昵称<input id="nicknameInput" autocomplete="nickname" placeholder="请输入玩家昵称"></label>
+          <label id="nicknameField" hidden>昵称<input id="nicknameInput" autocomplete="nickname" maxlength="24" placeholder="请输入玩家昵称"></label>
           <label>密码<input id="passwordInput" type="password" autocomplete="current-password" minlength="8" placeholder="请输入密码" required></label>
           <button class="primary-button auth-submit" type="submit" id="authSubmit">登录</button>
           <p id="authError" class="error-text" role="alert"></p>
           <div class="auth-switch"><span id="authModePrompt">还没有账号？</span><button class="text-button" type="button" id="authModeToggle">注册</button></div>
         </form>
       </section>
+
       <section id="tableView" hidden>
         <div class="table-toolbar">
           <div class="room-heading"><span class="eyebrow">ROOM</span><strong id="roomCode">房间大厅</strong><span id="roundStatus" class="status-pill">选择房间</span></div>
           <div class="toolbar-actions">
-            <button id="createRoomButton" class="primary-button">创建房间</button>
-            <button id="joinRoomButton" class="ghost-button">房号加入</button>
-            <button id="leaveRoomButton" class="danger-button" hidden>退出房间</button>
-            <button id="startNextButton" class="primary-button" hidden>开始下一局</button>
-            <button id="observeButton" class="ghost-button" hidden>开启观战</button>
-            <button id="spectateButton" class="ghost-button" hidden>进入观战</button>
+            <button id="createRoomButton" class="primary-button" type="button">创建房间</button>
+            <button id="joinRoomButton" class="ghost-button" type="button">房号加入</button>
+            <button id="leaveRoomButton" class="danger-button" type="button" hidden>退出房间</button>
+            <button id="startNextButton" class="primary-button" type="button" hidden>开始下一局</button>
+            <button id="observeButton" class="ghost-button" type="button" hidden>开启观战</button>
+            <button id="spectateButton" class="ghost-button" type="button" hidden>进入观战</button>
+            <button id="refillButton" class="gold-button" type="button" hidden>领取补豆</button>
           </div>
         </div>
+
         <section id="roomLobby" class="room-lobby">
-          <div class="room-lobby-head"><div><h2>可加入房间</h2><p id="roomListStatus">正在加载房间...</p></div><button id="refreshRoomsButton" class="ghost-button">刷新房间</button></div>
+          <div class="room-lobby-head"><div><h2>可加入房间</h2><p id="roomListStatus">正在加载房间...</p></div><button id="refreshRoomsButton" class="ghost-button" type="button">刷新房间</button></div>
           <div id="roomList" class="room-list" aria-live="polite"></div>
         </section>
-        <div class="table-layout" id="tableLayout" hidden><div class="felt" id="felt"><div class="felt-center"><div class="pot-label">底池</div><div id="potValue" class="pot-value">0</div><div id="compareNotice" class="compare-notice" aria-live="polite"></div></div><div id="players" class="players"></div></div><aside class="side-panel"><section><div class="panel-heading"><h2>本局信息</h2><span id="roleLabel" class="role-label"></span></div><div id="roundFeed" class="round-feed"></div></section><section class="action-panel" id="actionPanel"><div class="panel-heading"><h2>你的操作</h2><span id="beansLabel">0 豆</span></div><div class="action-grid"><button data-action="fold" class="danger-button">弃牌</button><button data-action="call" class="ghost-button">跟注</button><button data-action="raise" class="primary-button">加注</button><button data-action="all_in" class="gold-button">梭哈</button><button data-action="compare" class="compare-button">比牌</button></div><p class="hint">比牌阶段先展示发起与胜负，结算时公开牌面。</p></section></aside></div>
+
+        <div class="table-layout" id="tableLayout" hidden>
+          <div class="felt" id="felt">
+            <div class="felt-center">
+              <div class="pot-label">底池</div><div id="potValue" class="pot-value">0</div>
+              <div id="compareNotice" class="compare-notice" aria-live="polite"></div>
+            </div>
+            <div id="players" class="players"></div>
+            <div id="compareEffectOverlay" class="compare-effect-overlay" aria-hidden="true"><span></span></div>
+          </div>
+
+          <section class="action-panel" id="actionPanel">
+            <div class="action-summary"><span id="roleLabel" class="role-label"></span><span id="actionCostLabel"></span><strong id="beansLabel">0 豆</strong></div>
+            <div class="action-grid">
+              <button id="seeButton" class="ghost-button" type="button">看牌</button>
+              <button data-action="fold" class="danger-button" type="button">弃牌</button>
+              <button data-action="call" class="ghost-button" type="button">跟注</button>
+              <button id="raiseButton" class="gold-button" type="button">加注</button>
+              <button data-action="all_in" class="all-in-button" type="button">梭哈</button>
+              <button id="compareButton" class="compare-button" type="button">比牌</button>
+              <button id="revealButton" class="primary-button" type="button" hidden>亮出我的牌</button>
+            </div>
+          </section>
+
+          <div class="table-info">
+            <section class="round-panel"><div class="panel-heading"><h2>牌局动态</h2><span>第 <b id="bettingRoundLabel">0</b> 轮</span></div><div id="roundFeed" class="round-feed" aria-live="polite"></div></section>
+            <section class="chat-panel"><div class="panel-heading"><h2>房间聊天</h2><span id="chatModeLabel"></span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm"><input id="chatInput" maxlength="120" autocomplete="off" placeholder="说点什么"><button id="chatSendButton" class="primary-button" type="submit">发送</button></form></section>
+          </div>
+        </div>
       </section>
-      <section id="leaderboardView" hidden><div class="page-heading"><button id="backToTable" class="ghost-button">返回牌桌</button><div><p class="eyebrow">GLOBAL RANKING</p><h1>赌神榜 / 散财榜</h1></div></div><div class="leaderboard-tabs"><button class="tab-button active" data-kind="wins">赌神榜</button><button class="tab-button" data-kind="losses">散财榜</button></div><div id="leaderboardList" class="leaderboard-list"></div></section>
+
+      <section id="leaderboardView" hidden>
+        <div class="page-heading"><button id="backToTable" class="ghost-button" type="button">返回牌桌</button><div><p class="eyebrow">GLOBAL RANKING</p><h1>排行榜</h1></div></div>
+        <div class="leaderboard-tabs" role="tablist"><button class="tab-button" data-kind="wealth" type="button">财富榜</button><button class="tab-button active" data-kind="wins" type="button">赌神榜</button><button class="tab-button" data-kind="losses" type="button">散财榜</button></div>
+        <div class="leaderboard-head"><span>排名 / 玩家</span><span>对局</span><span>余额</span></div>
+        <div id="leaderboardList" class="leaderboard-list"></div>
+      </section>
     </main>
+
     <footer>本游戏仅虚拟娱乐，禁止任何形式现金赌博，禁止线下结算，违者责任自负</footer>
   </div>
-  <dialog id="settingsDialog"><form method="dialog" class="settings-panel"><div class="panel-heading"><h2>牌桌设置</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></div><label class="setting-row"><span>背景音乐</span><input id="musicToggle" type="checkbox"></label><label class="setting-row"><span>音效</span><input id="effectsToggle" type="checkbox"></label><label class="setting-row"><span>动画模式</span><select id="motionSelect"><option value="light">轻量</option><option value="cinematic">影视</option></select></label></form></dialog>
-  <audio id="backgroundMusic" loop preload="none"></audio>
+
+  <template id="turnCountdown"><span class="turn-countdown" aria-label="行动倒计时"></span></template>
+
+  <dialog id="raiseDialog" aria-labelledby="raiseTitle">
+    <form id="raiseForm" class="modal-panel">
+      <div class="panel-heading"><h2 id="raiseTitle">选择加注档位</h2><button class="icon-button" data-close-dialog="raiseDialog" type="button" aria-label="关闭">×</button></div>
+      <p id="raiseMultiplier" class="modal-note"></p>
+      <div id="raisePresets" class="raise-presets"></div>
+      <label>自定义暗牌档位<input id="raiseAmount" type="number" min="1" step="1" inputmode="numeric"></label>
+      <div id="raisePreview" class="raise-preview"></div>
+      <p id="raiseError" class="error-text" role="alert"></p>
+      <button class="gold-button modal-submit" type="submit">确认加注</button>
+    </form>
+  </dialog>
+
+  <dialog id="compareDialog" aria-labelledby="compareTitle">
+    <div class="modal-panel">
+      <div class="panel-heading"><h2 id="compareTitle">选择比牌对手</h2><button class="icon-button" data-close-dialog="compareDialog" type="button" aria-label="关闭">×</button></div>
+      <p id="compareFee" class="modal-note"></p>
+      <div id="compareTargets" class="compare-targets"></div>
+    </div>
+  </dialog>
+
+  <dialog id="refillDialog" aria-labelledby="refillTitle">
+    <form id="refillForm" class="modal-panel">
+      <div class="panel-heading"><h2 id="refillTitle">领取 100,000 豆</h2><button class="icon-button" data-close-dialog="refillDialog" type="button" aria-label="关闭">×</button></div>
+      <p class="modal-note">余额归零后需手动输入指定文字确认领取。</p>
+      <label>确认文字<input id="refillConfirmation" autocomplete="off" placeholder="请输入确认文字" required></label>
+      <p id="refillError" class="error-text" role="alert"></p>
+      <button class="gold-button modal-submit" type="submit">发送横幅并补豆</button>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+    <form method="dialog" class="modal-panel settings-panel">
+      <div class="panel-heading"><h2 id="settingsTitle">牌桌设置</h2><button class="icon-button" value="cancel" aria-label="关闭">×</button></div>
+      <label class="setting-row"><span>背景音乐</span><input id="musicToggle" type="checkbox"></label>
+      <label class="setting-row"><span>音效</span><input id="effectsToggle" type="checkbox"></label>
+      <label class="setting-row"><span>比牌动效</span><select id="motionSelect"><option value="light">轻量</option><option value="cinematic">影视</option><option value="disabled">关闭</option></select></label>
+    </form>
+  </dialog>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>

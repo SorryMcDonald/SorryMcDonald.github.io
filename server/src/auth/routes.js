@@ -126,7 +126,7 @@ export function registerAuthRoutes(app, options = {}) {
     const motionMode = request.body?.motionMode;
     if (musicEnabled !== undefined && typeof musicEnabled !== 'boolean') throw httpError(400, 'musicEnabled 必须是布尔值');
     if (effectsEnabled !== undefined && typeof effectsEnabled !== 'boolean') throw httpError(400, 'effectsEnabled 必须是布尔值');
-    if (motionMode !== undefined && !['light', 'cinematic'].includes(motionMode)) throw httpError(400, 'motionMode 不支持');
+    if (motionMode !== undefined && !['light', 'cinematic', 'disabled'].includes(motionMode)) throw httpError(400, 'motionMode 不支持');
     if (db?.query) {
       const result = await dbQuery(db, `UPDATE users SET music_enabled = COALESCE($2, music_enabled), effects_enabled = COALESCE($3, effects_enabled), animation_mode = COALESCE($4, animation_mode)
         WHERE id = $1 RETURNING *`, [request.user.id, musicEnabled ?? null, effectsEnabled ?? null, motionMode ?? null]);

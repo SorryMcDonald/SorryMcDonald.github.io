@@ -34,18 +34,38 @@ describe('browser client contract', () => {
     const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');
     const css = await readFile(new URL('../../public/styles.css', import.meta.url), 'utf8');
 
-    expect(js).toContain("12:'Q'");
-    expect(js).toContain("C:'♣'");
-    expect(js).toContain("H:'♥'");
+    expect(js).toMatch(/12:\s*'Q'/);
+    expect(js).toMatch(/C:\s*'♣'/);
+    expect(js).toMatch(/H:\s*'♥'/);
     expect(js).not.toContain('`${card.rank}${card.suit}`');
     expect(css).toContain('.card.red');
     expect(css).toContain('.card-rank');
     expect(css).toContain('.card-suit');
-    expect(js).toContain("topIndex.className='card-index card-index-top'");
-    expect(js).toContain("bottomIndex.className='card-index card-index-bottom'");
-    expect(js).toContain("pip.className='card-pip'");
+    expect(js).toMatch(/topIndex\.className\s*=\s*'card-index card-index-top'/);
+    expect(js).toMatch(/bottomIndex\.className\s*=\s*'card-index card-index-bottom'/);
+    expect(js).toMatch(/pip\.className\s*=\s*'card-pip'/);
     expect(css).toContain('aspect-ratio:5/7');
     expect(css).toMatch(/\.cards\{[^}]*align-items:center/);
     expect(css).toMatch(/\.card-index-bottom\{[^}]*rotate\(180deg\)/);
+  });
+
+  it('contains the approved south-seat actions, dialogs, chat, refill, and effect modes', async () => {
+    const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
+    const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');
+    const css = await readFile(new URL('../../public/styles.css', import.meta.url), 'utf8');
+
+    for (const id of ['raiseDialog', 'compareDialog', 'refillDialog', 'chatForm', 'turnCountdown', 'revealButton']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(html).toContain('<option value="disabled">关闭</option>');
+    expect(html).toContain('data-kind="wealth"');
+    expect(js).toContain('function projectSeats');
+    expect(js).toContain("confirmationText:'黄总是大帅比'");
+    expect(js).toContain("type:'chat'");
+    expect(js).toContain('playCompareEffect');
+    expect(js).not.toMatch(/players\.find\([^\n]+userId!==state\.user\.id/);
+    expect(css).toContain('.player-seat.self');
+    expect(css).toContain('.turn-countdown.danger');
+    expect(css).toContain('body[data-compare-effect="cinematic"]');
   });
 });

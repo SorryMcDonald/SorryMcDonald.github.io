@@ -22,4 +22,12 @@ describe('PostgreSQL schema contract', () => {
     expect(sql).toMatch(/unique index.*active.*room_players/i);
     expect(sql).toMatch(/pg_notify\(['"]zhajinhua_events['"]/i);
   });
+
+  it('allows the persisted disabled comparison-effect mode for new and existing databases', async () => {
+    const schema = await readFile(schemaPath, 'utf8');
+    const migration = await readFile(resolve(process.cwd(), 'sql/004_animation_mode_disabled.sql'), 'utf8');
+    expect(schema).toMatch(/animation_mode\s+IN\s*\('light',\s*'cinematic',\s*'disabled'\)/i);
+    expect(migration).toMatch(/DROP CONSTRAINT IF EXISTS users_animation_mode_check/i);
+    expect(migration).toMatch(/ADD CONSTRAINT users_animation_mode_check[\s\S]*'disabled'/i);
+  });
 });

@@ -35,4 +35,13 @@ describe('email authentication', () => {
     expect(me.json().user.titles).toEqual(expect.arrayContaining(['大富翁', '赌神']));
     await app.close();
   });
+
+  it('persists the disabled comparison-effect mode', async () => {
+    const app = await buildApp({ logger: false });
+    const registration = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'motion@example.com', nickname: '动效玩家', password: 'password-123' } });
+    const response = await app.inject({ method: 'PATCH', url: '/api/me/settings', headers: { cookie: registration.headers['set-cookie'] }, payload: { motionMode: 'disabled' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user.motionMode).toBe('disabled');
+    await app.close();
+  });
 });
