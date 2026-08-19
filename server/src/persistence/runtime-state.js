@@ -140,6 +140,14 @@ export function createPersistence({ db, store, roomService }) {
         await persistRoom(client, room);
         await persistBanners(client, store.banners.slice(bannerStart));
       });
+    },
+
+    async deleteRoom(roomId, bannerStart = store.banners.length) {
+      await withTransaction(db, async (client) => {
+        await persistUsers(client, store.users);
+        await persistBanners(client, store.banners.slice(bannerStart));
+        await client.query('DELETE FROM rooms WHERE id = $1', [roomId]);
+      });
     }
   };
 }

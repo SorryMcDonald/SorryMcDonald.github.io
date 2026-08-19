@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { buildApp } from '../src/app.js';
 import { createProductionRuntime } from '../src/runtime.js';
+
+async function register(app, email, nickname) {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/auth/register',
+    payload: { email, nickname, password: 'password-123' }
+  });
+  return response.headers['set-cookie'];
+}
 
 function fakeDb() {
   const queries = [];
@@ -46,5 +56,27 @@ describe('production runtime persistence', () => {
     expect(sql).toMatch(/INSERT INTO rooms/i);
     expect(sql).toMatch(/INSERT INTO global_banners/i);
     await runtime.close();
+  });
+
+  it('routes room mutations through lifecycle timers and deletes reclaimed snapshots', async () => {
+    const deleted = [];
+    const persistence = {
+      async flushRoom() {},
+      async deleteRoom(roomId) { deleted.push(roomId); }
+    };
+    const app = await buildApp({ logger: false, persistence });
+    const firstCookie = await register(app, 'lifecycle-a@example.com', '生命周期甲');
+    const secondCookie = await register(app, 'lifecycle-b@example.com', '生命周期乙');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: firstCookie }, payload: {} })).json().room;
+
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: secondCookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
+
+    expect(app.lifecycle.turnTimers.has(room.id)).toBe(true);
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: firstCookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: secondCookie }, payload: {} });
+    expect(deleted).toEqual([room.id]);
+    expect(app.lifecycle.turnTimers.has(room.id)).toBe(false);
+    await app.close();
   });
 });

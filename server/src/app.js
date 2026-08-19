@@ -31,11 +31,19 @@ export async function buildApp(options = {}) {
     const gateway = new WebSocketGateway({
       service: app.rooms,
       store: options.store ?? app.auth.store,
-      findSession: app.auth.findSession
+      findSession: app.auth.findSession,
+      lifecycle: app.lifecycle
     });
     gateway.attach(app.server);
     app.decorate('gateway', gateway);
+    app.lifecycle.setBroadcasters({
+      room: (roomId, event) => gateway.broadcastRoom(roomId, event),
+      global: (banner) => gateway.broadcastGlobal(banner)
+    });
   }
+
+  app.lifecycle.restoreAll();
+  app.addHook('onClose', async () => app.lifecycle.close());
 
   app.get('/healthz', async () => ({ ok: true }));
   return app;
