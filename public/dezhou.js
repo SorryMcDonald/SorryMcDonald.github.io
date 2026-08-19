@@ -47,7 +47,7 @@ function renderSeats({entrance=false,joinedUserIds=new Set()}={}){
   const room=state.room;const container=$('seats');container.replaceChildren();
   const ordered=[...room.players].sort((left,right)=>left.userId===state.user.id?-1:right.userId===state.user.id?1:left.seat-right.seat);const start=lastStartEvent(room)?.payload??{};
   ordered.forEach((player,index)=>{
-    const seat=document.createElement('article');seat.className='player-seat';seat.dataset.userId=player.userId;seat.dataset.seat=String(player.seat);Object.assign(seat.style,seatPosition(index,ordered.length));
+    const position=seatPosition(index,ordered.length);const seat=document.createElement('article');seat.className='player-seat';seat.dataset.userId=player.userId;seat.dataset.seat=String(player.seat);Object.assign(seat.style,position);
     if(entrance||joinedUserIds.has(player.userId)){seat.classList.add('seat-enter');seat.style.setProperty('--seat-delay',`${entrance?index*70:0}ms`);}
     if(player.userId===state.user.id)seat.classList.add('me');if(player.folded)seat.classList.add('folded');if(player.seat===room.currentTurn)seat.classList.add('current');
     const name=document.createElement('div');name.className='player-name';name.textContent=`${player.nickname}${player.userId===state.user.id?'（你）':''}`;
@@ -56,6 +56,11 @@ function renderSeats({entrance=false,joinedUserIds=new Set()}={}){
     if(player.allIn)badges.append(badge('全押'));else if(player.folded)badges.append(badge('弃牌'));else if(player.waiting||!player.inHand)badges.append(badge('等待','waiting'));
     const cards=document.createElement('div');cards.className='hole-cards';const visible=Array.isArray(player.holeCards)?player.holeCards:null;const slots=visible??(player.inHand?[null,null]:[]);slots.forEach((card)=>cards.append(cardNode(card)));
     seat.append(name,stack,badges,cards);container.append(seat);
+    if(Number(player.streetBet)>0){
+      const wager=document.createElement('div');wager.className='table-bet';wager.dataset.userId=player.userId;wager.setAttribute('aria-label',`${player.nickname} 已下注 ${money(player.streetBet)}`);
+      const seatLeft=parseFloat(position.left);const seatTop=parseFloat(position.top);wager.style.left=`${50+(seatLeft-50)*.7}%`;wager.style.top=`${50+(seatTop-50)*.7}%`;
+      const chips=document.createElement('span');chips.className='mini-chip-stack';for(let chipIndex=0;chipIndex<3;chipIndex++){const chip=document.createElement('i');chips.append(chip);}const amount=document.createElement('strong');amount.textContent=money(player.streetBet);wager.append(chips,amount);container.append(wager);
+    }
   });
 }
 
@@ -115,7 +120,7 @@ function renderRoom(){
   const room=state.room;if(!room){renderLobby();return;}const firstRender=state.renderedRoomId!==room.id;const newEvents=firstRender?[]:(room.recentEvents??[]).filter((event)=>Number(event.id)>state.lastEventId);const joinedUserIds=new Set(newEvents.filter((event)=>event.eventType==='texas_player_joined').map((event)=>event.payload?.userId).filter(Boolean));state.renderedRoomId=room.id;
   $('lobbyView').hidden=true;$('tableView').hidden=false;$('createButton').hidden=true;$('joinCodeButton').hidden=true;$('leaveButton').hidden=false;
   $('startButton').hidden=!['waiting','settled'].includes(room.status)||room.hostUserId!==state.user.id;const me=ownPlayer();$('rebuyButton').hidden=!me||!['waiting','settled'].includes(room.status)||me.stack>=room.maxBuyIn;$('roomSettingsButton').hidden=room.hostUserId!==state.user.id;
-  setText('roomTitle',`房间 ${room.code}`);setText('statusBadge',STATUS[room.status]??room.status);setText('potValue',money(room.pot));setText('blindText',`${money(room.smallBlind)} / ${money(room.bigBlind)}`);setText('handNumber',room.handNumber);setText('currentBet',money(room.currentBet));setText('minimumRaise',money(room.minRaise));
+  setText('roomTitle',`房间 ${room.code}`);setText('statusBadge',STATUS[room.status]??room.status);setText('potValue',money(room.pot));$('potChipStack').classList.toggle('active',Number(room.pot)>0);setText('blindText',`${money(room.smallBlind)} / ${money(room.bigBlind)}`);setText('handNumber',room.handNumber);setText('currentBet',money(room.currentBet));setText('minimumRaise',money(room.minRaise));
   const current=room.players.find((player)=>player.seat===room.currentTurn);setText('turnText',current?current.userId===state.user.id?'轮到你行动':`轮到 ${current.nickname}`:['waiting','settled'].includes(room.status)?'等待房主开始下一手':'牌局处理中');
   setText('sidePotText',(room.pots??[]).length>1?room.pots.map((pot,index)=>`${index?'边池':'主池'} ${money(pot.amount)}`).join(' · '):'');setText('roleLabel',room.isSpectator?'观战':room.hostUserId===state.user.id?'房主':'玩家');
   const board=$('board');board.replaceChildren();for(let index=0;index<5;index++)board.append(cardNode(room.board[index]??null,false));renderSeats({entrance:firstRender,joinedUserIds});renderActions();renderFeed();playRoomEvents(newEvents,room.id);state.lastEventId=Math.max(state.lastEventId,...(room.recentEvents??[]).map((event)=>Number(event.id)),0);try{sessionStorage.setItem('texas.roomId',room.id);}catch{}

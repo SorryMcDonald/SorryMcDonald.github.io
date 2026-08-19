@@ -25,7 +25,8 @@ describe('Texas browser client contract',() => {
     expect(js).toContain('function seatPosition');
     expect(js).toContain('function playRoomEvents');
     expect(js).toContain("event.eventType==='texas_hand_settled'");
-    for (const className of ['seat-enter','chip-flight','round-winner','round-loser','settlement-burst']) expect(css).toContain(className);
+    expect(html).toContain('id="potChipStack"');
+    for (const className of ['seat-enter','table-bet','mini-chip-stack','pot-chip-stack','chip-flight','round-winner','round-loser','settlement-burst']) expect(css).toContain(className);
     expect(css).toContain('@media(prefers-reduced-motion:reduce)');
     expect(css).toMatch(/@media\(max-width:620px\)/);
   });

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>德州扑克 · 联机牌桌</title>
-  <link rel="stylesheet" href="./dezhou.css">
+  <link rel="stylesheet" href="./dezhou.css?v=animations-3">
 </head>
 <body>
   <header class="topbar">
@@ -52,7 +52,7 @@
             <div id="seats" class="seats"></div>
             <div class="table-center">
               <div id="board" class="board" aria-label="公共牌"></div>
-              <div class="pot-line"><span>底池</span><strong id="potValue">0</strong></div>
+              <div class="pot-line"><span id="potChipStack" class="pot-chip-stack" aria-hidden="true"><i></i><i></i><i></i></span><span>底池</span><strong id="potValue">0</strong></div>
               <div id="sidePotText" class="side-pot"></div>
               <div id="turnText" class="turn-text">等待开局</div>
             </div>
@@ -122,6 +122,6 @@
   </dialog>
 
   <footer>仅供虚拟娱乐，禁止现金赌博和线下结算</footer>
-  <script type="module" src="./dezhou.js"></script>
+  <script type="module" src="./dezhou.js?v=animations-3"></script>
 </body>
 </html>
