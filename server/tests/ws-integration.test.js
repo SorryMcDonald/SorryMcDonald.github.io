@@ -87,4 +87,24 @@ describe('real WebSocket gateway', () => {
     const [code] = await once(socket, 'close');
     expect(code).toBe(1008);
   });
+
+  it('closes every canonical room tab when the last player reclaims a room', async () => {
+    const app = await buildApp({ logger: false, attachGateway: true });
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    cleanup.push(() => app.close());
+    const origin = `http://127.0.0.1:${app.server.address().port}`;
+    const account = await register(app, 'texas-integration-reclaim@example.com', '回收多页');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: account.cookie }, payload: {} })).json().room;
+    const firstTab = await connect(origin, room.id, account.cookie);
+    const secondTab = await connect(origin, room.code, account.cookie);
+    const firstClosed = once(firstTab, 'close');
+    const secondClosed = once(secondTab, 'close');
+
+    const leave = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: account.cookie } });
+
+    expect(leave.statusCode).toBe(200);
+    await expect(Promise.all([firstClosed, secondClosed])).resolves.toHaveLength(2);
+    expect(app.gateway.rooms.has(room.id)).toBe(false);
+    expect(app.lifecycle.connections.has(`${room.id}:${account.user.id}`)).toBe(false);
+  });
 });

@@ -102,4 +102,85 @@ describe('WebSocket visibility', () => {
     expect(client.terminated).toBe(1);
     expect(lifecycle.disconnectedCalls).toEqual([['room-a', 'user-a']]);
   });
+
+  it('keeps Texas sockets isolated, canonicalizes invite codes, and does not attach Zhajinhua lifecycle tracking', async () => {
+    const lifecycle = {
+      connected() { throw new Error('Texas socket must not use Zhajinhua lifecycle tracking'); },
+      disconnected() { throw new Error('Texas socket must not use Zhajinhua lifecycle tracking'); }
+    };
+    const texasRoom = { id: 'texas-room-id', code: '654321', spectators: new Set(['texas-user']) };
+    const texas = {
+      room(roomId) {
+        expect(roomId).toBe('654321');
+        return texasRoom;
+      },
+      canAccess(roomId, userId) {
+        expect(roomId).toBe('texas-room-id');
+        expect(userId).toBe('texas-user');
+        return true;
+      },
+      eventsSince(roomId, userId, after) {
+        expect(roomId).toBe('texas-room-id');
+        expect(userId).toBe('texas-user');
+        expect(after).toBe(0);
+        return [{ id: 1, eventType: 'texas_player_action', payload: {} }];
+      },
+      publicEvent(_room, event) { return event; }
+    };
+    const zhajinhua = { room: () => ({ id: 'zhajinhua-room', spectators: new Set() }) };
+    const gateway = new WebSocketGateway({
+      service: zhajinhua,
+      services: { zhajinhua, texas },
+      lifecycle,
+      findSession: async () => ({ id: 'texas-user' })
+    });
+    const client = socket();
+
+    await gateway.handleConnection(
+      client,
+      { headers: { cookie: 'zhajinhua_session=database-token' } },
+      new URL('http://localhost/ws?game=texas&roomId=654321')
+    );
+
+    expect(gateway.rooms.has('texas:texas-room-id')).toBe(true);
+    await gateway.handleMessage(client, 'texas-room-id', 'texas-user', JSON.stringify({ type: 'sync', after: 0 }), texas, 'texas');
+    expect(client.sent).toContainEqual({
+      type: 'room_event',
+      game: 'texas',
+      event: { id: 1, eventType: 'texas_player_action', payload: {} }
+    });
+  });
+
+  it('closes canonical room sockets once without scheduling a lifecycle departure', () => {
+    const lifecycle = {
+      disconnectedCalls: [],
+      connected() {},
+      disconnected(roomId, userId) { this.disconnectedCalls.push([roomId, userId]); }
+    };
+    const handlers = new Map();
+    const client = {
+      readyState: 1,
+      closes: 0,
+      on(name, handler) { if (!handlers.has(name)) handlers.set(name, []); handlers.get(name).push(handler); },
+      close() { this.closes += 1; for (const handler of handlers.get('close') ?? []) handler(); }
+    };
+    const service = { room: (roomId) => ({ id: 'canonical-room', code: roomId, spectators: new Set() }) };
+    const gateway = new WebSocketGateway({ service, lifecycle });
+    gateway.addRoomSocket('654321', client, { userId: 'user-a' });
+
+    gateway.closeRoom('canonical-room');
+
+    expect(client.closes).toBe(1);
+    expect(gateway.rooms.has('canonical-room')).toBe(false);
+    expect(lifecycle.disconnectedCalls).toEqual([]);
+  });
+
+  it('rejects oversized inbound messages before parsing', async () => {
+    const gateway = new WebSocketGateway({ maxPayloadBytes: 8 });
+    const client = socket();
+
+    await gateway.handleMessage(client, 'room', 'user', Buffer.from('{"type":"chat"}'));
+
+    expect(client.sent).toContainEqual({ type: 'error', error: '消息过大' });
+  });
 });

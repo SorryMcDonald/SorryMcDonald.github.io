@@ -6,6 +6,7 @@ import { registerAuthRoutes } from './auth/routes.js';
 import { registerRoomRoutes } from './rooms/routes.js';
 import { registerLeaderboardRoutes } from './leaderboard/routes.js';
 import { WebSocketGateway } from './ws/gateway.js';
+import { registerTexasRoutes } from './texas/routes.js';
 
 export async function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? config.logger });
@@ -26,10 +27,16 @@ export async function buildApp(options = {}) {
     store: options.store ?? app.auth.store,
     persistence: options.persistence
   });
+  registerTexasRoutes(app, {
+    service: options.texasService,
+    store: options.store ?? app.auth.store,
+    persistence: options.texasPersistence
+  });
 
   if (options.attachGateway) {
     const gateway = new WebSocketGateway({
       service: app.rooms,
+      services: { zhajinhua:app.rooms, texas:app.texas },
       store: options.store ?? app.auth.store,
       findSession: app.auth.findSession,
       lifecycle: app.lifecycle
@@ -38,7 +45,8 @@ export async function buildApp(options = {}) {
     app.decorate('gateway', gateway);
     app.lifecycle.setBroadcasters({
       room: (roomId, event) => gateway.broadcastRoom(roomId, event),
-      global: (banner) => gateway.broadcastGlobal(banner)
+      global: (banner) => gateway.broadcastGlobal(banner),
+      reclaim: (roomId) => gateway.closeRoom(roomId)
     });
     app.addHook('onClose', async () => gateway.close());
   }

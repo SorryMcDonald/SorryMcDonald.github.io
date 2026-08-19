@@ -17,11 +17,12 @@ function isMissingRoom(error) {
 }
 
 export class RoomLifecycleController {
-  constructor({ service, persistence, broadcastRoom, broadcastGlobal, clock = systemClock } = {}) {
+  constructor({ service, persistence, broadcastRoom, broadcastGlobal, reclaimRoomSockets, clock = systemClock } = {}) {
     this.service = service;
     this.persistence = persistence;
     this.broadcastRoom = broadcastRoom;
     this.broadcastGlobal = broadcastGlobal;
+    this.reclaimRoomSockets = reclaimRoomSockets;
     this.clock = clock;
     this.queues = new Map();
     this.turnTimers = new Map();
@@ -29,9 +30,10 @@ export class RoomLifecycleController {
     this.connections = new Map();
   }
 
-  setBroadcasters({ room, global } = {}) {
+  setBroadcasters({ room, global, reclaim } = {}) {
     if (room) this.broadcastRoom = room;
     if (global) this.broadcastGlobal = global;
+    if (reclaim) this.reclaimRoomSockets = reclaim;
   }
 
   run(roomId, mutation) {
@@ -76,6 +78,7 @@ export class RoomLifecycleController {
         await this.persistence?.deleteRoom?.(roomId, afterBannerCount);
         this.broadcastEvents(beforeRoom, afterEventId);
         this.cancelRoom(roomId);
+        this.reclaimRoomSockets?.(roomId);
       }
       return value;
     });
@@ -186,6 +189,10 @@ export class RoomLifecycleController {
       this.clock.clearTimeout(timer.handle);
       this.disconnectTimers.delete(key);
       this.connections.delete(key);
+    }
+    const prefix = `${roomId}:`;
+    for (const key of this.connections.keys()) {
+      if (key.startsWith(prefix)) this.connections.delete(key);
     }
   }
 

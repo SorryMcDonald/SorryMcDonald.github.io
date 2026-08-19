@@ -3,7 +3,6 @@ vendor/
 .jekyll-cache/
 _site/
 Gemfile.lock
-
 .superpowers/
 .worktrees/
 __pycache__/

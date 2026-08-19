@@ -31,3 +31,20 @@ describe('PostgreSQL schema contract', () => {
     expect(migration).toMatch(/ADD CONSTRAINT users_animation_mode_check[\s\S]*'disabled'/i);
   });
 });
+
+describe('Texas PostgreSQL schema contract', () => {
+  it('defines versioned rooms, private cards, pots, idempotency and an immutable wallet ledger', async () => {
+    const schema = await readFile(resolve(process.cwd(), 'sql/005_texas_schema.sql'), 'utf8');
+    const indexes = await readFile(resolve(process.cwd(), 'sql/006_texas_indexes.sql'), 'utf8');
+    expect(schema).toMatch(/create table if not exists texas_rooms/i);
+    expect(schema).toMatch(/version BIGINT/i);
+    expect(schema).toMatch(/create table if not exists texas_hole_cards/i);
+    expect(schema).toMatch(/create table if not exists texas_pots/i);
+    expect(schema).toMatch(/idempotency_key TEXT NOT NULL UNIQUE/i);
+    expect(schema).toMatch(/texas_client_actions/i);
+    expect(schema).toMatch(/TEXAS_WALLET_LEDGER_IMMUTABLE/i);
+    expect(indexes).toMatch(/texas_room_players_user_active_unique/i);
+    expect(indexes).toMatch(/texas_room_players_room_seat_active_unique/i);
+    expect(schema).not.toMatch(/UNIQUE\s*\(room_id,\s*seat\)/i);
+  });
+});
