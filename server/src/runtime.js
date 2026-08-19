@@ -3,6 +3,8 @@ import { loadConfig } from './config.js';
 import { createDbPool } from './db/pool.js';
 import { RoomService } from './rooms/service.js';
 import { createPersistence, hydrateStore } from './persistence/runtime-state.js';
+import { TexasService } from './texas/service.js';
+import { createTexasPersistence } from './texas/persistence.js';
 
 export async function createProductionRuntime(options = {}) {
   const env = options.env ?? process.env;
@@ -17,11 +19,16 @@ export async function createProductionRuntime(options = {}) {
   const roomService = new RoomService({ store });
   const persistence = createPersistence({ db, store, roomService });
   await persistence.hydrateRooms();
+  const texasService = new TexasService({ store });
+  const texasPersistence = createTexasPersistence({ db, service:texasService });
+  await texasPersistence.hydrateRooms();
   const app = await buildApp({
     db,
     store,
     roomService,
     persistence,
+    texasService,
+    texasPersistence,
     attachGateway: true,
     secureCookies: env.NODE_ENV === 'production',
     logger: runtimeConfig.logger
@@ -34,6 +41,8 @@ export async function createProductionRuntime(options = {}) {
     store,
     roomService,
     persistence,
+    texasService,
+    texasPersistence,
     config: runtimeConfig,
     async close() {
       if (closed) return;

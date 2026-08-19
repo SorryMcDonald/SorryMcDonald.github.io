@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>德州扑克 · 联机牌桌</title>
+  <link rel="stylesheet" href="/dezhou.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/dezhou.html"><span class="brand-suit">♠</span><strong>德州扑克</strong><span>SERVER TABLE</span></a>
+    <nav>
+      <button id="leaderboardButton" class="quiet" type="button">排行榜</button>
+      <button id="refillButton" class="quiet" type="button" hidden>领取补给</button>
+      <span id="accountLabel" class="account">未登录</span>
+    </nav>
+  </header>
+  <div id="globalTicker" class="ticker" aria-live="polite"></div>
+
+  <main>
+    <section id="authView" class="auth-view">
+      <div class="auth-title"><span class="eyebrow">NO-LIMIT HOLD'EM</span><h1>德州扑克</h1><p>标准盲注 · 后端发牌 · 多人边池</p></div>
+      <form id="authForm" class="auth-form">
+        <h2 id="authTitle">登录牌桌</h2>
+        <label>邮箱<input id="emailInput" type="email" autocomplete="email" required></label>
+        <label id="nicknameField" hidden>昵称<input id="nicknameInput" maxlength="24" autocomplete="nickname"></label>
+        <label>密码<input id="passwordInput" type="password" minlength="8" autocomplete="current-password" required></label>
+        <button id="authSubmit" class="primary" type="submit">登录</button>
+        <p id="authError" class="error" role="alert"></p>
+        <button id="authModeToggle" class="text-button" type="button">没有账号？注册</button>
+      </form>
+    </section>
+
+    <section id="gameView" hidden>
+      <div class="room-toolbar">
+        <div><span class="eyebrow">TEXAS ROOM</span><strong id="roomTitle">公开房间</strong><span id="statusBadge" class="status">大厅</span></div>
+        <div class="toolbar-actions">
+          <button id="createButton" class="primary" type="button">创建房间</button>
+          <button id="joinCodeButton" type="button">房号加入</button>
+          <button id="startButton" class="primary" type="button" hidden>开始下一手</button>
+          <button id="rebuyButton" type="button" hidden>补充筹码</button>
+          <button id="roomSettingsButton" type="button" hidden>房间设置</button>
+          <button id="leaveButton" class="danger" type="button" hidden>退出房间</button>
+        </div>
+      </div>
+
+      <section id="lobbyView" class="lobby-view">
+        <div class="section-head"><div><h2>公开房间</h2><p id="roomListStatus">手动刷新以获取房间</p></div><button id="refreshButton" type="button" title="刷新房间">↻ 刷新</button></div>
+        <div id="roomList" class="room-list"></div>
+      </section>
+
+      <section id="tableView" class="table-layout" hidden>
+        <div class="table-column">
+          <div id="pokerTable" class="poker-table">
+            <div class="table-rail"></div>
+            <div id="seats" class="seats"></div>
+            <div class="table-center">
+              <div id="board" class="board" aria-label="公共牌"></div>
+              <div class="pot-line"><span>底池</span><strong id="potValue">0</strong></div>
+              <div id="sidePotText" class="side-pot"></div>
+              <div id="turnText" class="turn-text">等待开局</div>
+            </div>
+          </div>
+
+          <div id="actionBar" class="action-bar" hidden>
+            <button id="foldButton" class="danger" data-action="fold" type="button">弃牌</button>
+            <button id="checkButton" data-action="check" type="button">过牌</button>
+            <button id="callButton" data-action="call" type="button">跟注</button>
+            <div class="raise-control">
+              <input id="raiseSlider" type="range" min="0" max="0" value="0" aria-label="下注金额">
+              <input id="raiseAmount" type="number" min="0" value="0" aria-label="下注金额">
+              <button id="raiseButton" class="primary" type="button">加注</button>
+            </div>
+            <button id="allInButton" class="gold" data-action="all_in" type="button">全押</button>
+          </div>
+        </div>
+
+        <aside class="info-panel">
+          <section><div class="section-head compact"><h2>本手信息</h2><span id="roleLabel"></span></div><dl class="hand-facts"><div><dt>盲注</dt><dd id="blindText">10 / 20</dd></div><div><dt>手数</dt><dd id="handNumber">0</dd></div><div><dt>当前下注</dt><dd id="currentBet">0</dd></div><div><dt>最小加注</dt><dd id="minimumRaise">0</dd></div></dl></section>
+          <section><div class="section-head compact"><h2>行动记录</h2><span id="connectionState">离线</span></div><div id="eventFeed" class="event-feed"></div></section>
+        </aside>
+      </section>
+    </section>
+
+    <section id="leaderboardView" hidden>
+      <div class="section-head"><div><span class="eyebrow">GLOBAL RANKING</span><h1>牌桌排行榜</h1></div><button id="backButton" type="button">返回牌桌</button></div>
+      <div class="tabs"><button class="active" data-rank="wins" type="button">胜场榜</button><button data-rank="losses" type="button">散财榜</button></div>
+      <div id="leaderboardList" class="leaderboard-list"></div>
+    </section>
+  </main>
+
+  <dialog id="createDialog">
+    <form id="createForm" class="dialog-form">
+      <div class="dialog-head"><h2>创建德州房间</h2><button type="button" data-close="createDialog" aria-label="关闭">×</button></div>
+      <div class="form-grid"><label>小盲<input id="smallBlindInput" type="number" min="1" value="10"></label><label>大盲<input id="bigBlindInput" type="number" min="2" value="20"></label><label>买入<input id="createBuyInInput" type="number" min="400" value="1000"></label><label>人数上限<input id="maxPlayersInput" type="number" min="2" max="9" value="9"></label></div>
+      <label class="check-row"><input id="allowSpectatorsInput" type="checkbox">允许观战</label>
+      <label class="check-row"><input id="spectatorCardsInput" type="checkbox">观战者可看底牌</label>
+      <p id="createError" class="error"></p><button class="primary" type="submit">创建并入座</button>
+    </form>
+  </dialog>
+
+  <dialog id="joinDialog">
+    <form id="joinForm" class="dialog-form">
+      <div class="dialog-head"><h2>加入房间</h2><button type="button" data-close="joinDialog" aria-label="关闭">×</button></div>
+      <label>房间号<input id="joinCodeInput" maxlength="12" autocomplete="off"></label>
+      <label>买入筹码<input id="joinBuyInInput" type="number" min="1" value="1000"></label>
+      <input id="joinRoomId" type="hidden"><p id="joinError" class="error"></p><button class="primary" type="submit">确认加入</button>
+    </form>
+  </dialog>
+
+  <dialog id="rebuyDialog">
+    <form id="rebuyForm" class="dialog-form">
+      <div class="dialog-head"><h2>补充牌桌筹码</h2><button type="button" data-close="rebuyDialog" aria-label="关闭">×</button></div>
+      <label>补充数量<input id="rebuyAmountInput" type="number" min="1" value="400"></label>
+      <p id="rebuyError" class="error"></p><button class="primary" type="submit">确认补充</button>
+    </form>
+  </dialog>
+
+  <dialog id="roomSettingsDialog">
+    <form id="roomSettingsForm" class="dialog-form">
+      <div class="dialog-head"><h2>房间设置</h2><button type="button" data-close="roomSettingsDialog" aria-label="关闭">×</button></div>
+      <label class="check-row"><input id="roomAllowSpectators" type="checkbox">允许观战</label>
+      <label class="check-row"><input id="roomSpectatorCards" type="checkbox">观战者可看所有底牌</label>
+      <p class="warning">实时明牌可能被用于串通，默认建议关闭。</p><button class="primary" type="submit">保存设置</button>
+    </form>
+  </dialog>
+
+  <footer>仅供虚拟娱乐，禁止现金赌博和线下结算</footer>
+  <script type="module" src="/dezhou.js"></script>
+</body>
+</html>
