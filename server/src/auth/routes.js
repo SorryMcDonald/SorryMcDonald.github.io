@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import { hashPassword, verifyPassword } from './password.js';
 import { clearSessionCookie, createSessionToken, hashSessionToken, SESSION_COOKIE, sessionRecord, setSessionCookie } from './session.js';
+import { resolveUserTitles } from '../leaderboard/ranking.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STARTING_BEANS = 100_000;
@@ -10,9 +11,9 @@ function normalizeEmail(email) { return String(email ?? '').trim().toLowerCase()
 function normalizeNickname(nickname) { return String(nickname ?? '').trim(); }
 function httpError(statusCode, message) { const error = new Error(message); error.statusCode = statusCode; return error; }
 
-function mapUser(row) {
+function mapUser(row, titles = []) {
   if (!row) return null;
-  return { id: row.id, email: row.email, nickname: row.nickname, beans: Number(row.beans ?? 0), wins: Number(row.wins ?? row.win_count ?? 0), losses: Number(row.losses ?? row.loss_count ?? 0), musicEnabled: row.music_enabled ?? row.musicEnabled ?? true, effectsEnabled: row.effects_enabled ?? row.effectsEnabled ?? true, motionMode: row.animation_mode ?? row.motion_mode ?? row.motionMode ?? 'light' };
+  return { id: row.id, email: row.email, nickname: row.nickname, beans: Number(row.beans ?? 0), wins: Number(row.wins ?? row.win_count ?? 0), losses: Number(row.losses ?? row.loss_count ?? 0), musicEnabled: row.music_enabled ?? row.musicEnabled ?? true, effectsEnabled: row.effects_enabled ?? row.effectsEnabled ?? true, motionMode: row.animation_mode ?? row.motion_mode ?? row.motionMode ?? 'light', titles };
 }
 
 async function dbQuery(db, text, values = []) { return db.query(text, values); }
@@ -21,6 +22,10 @@ export function registerAuthRoutes(app, options = {}) {
   const db = options.db;
   const store = options.store ?? { users: new Map(), sessions: new Map() };
   app.register(cookie);
+
+  function publicUser(user) {
+    return mapUser(user, resolveUserTitles(store.users.values()).get(user?.id) ?? []);
+  }
 
   async function findByEmail(email) {
     if (db?.query) {
@@ -94,24 +99,26 @@ export function registerAuthRoutes(app, options = {}) {
     let user;
     try { user = await createUser({ email, nickname, passwordHash: await hashPassword(body.password) }); }
     catch (error) { if (error.code === '23505') throw httpError(409, '邮箱或昵称已存在'); throw error; }
+    store.users.set(user.id, user);
     const token = createSessionToken();
     await saveSession(user.id, token);
     setSessionCookie(reply, token, options.secureCookies);
-    return reply.code(201).send({ user: mapUser(user) });
+    return reply.code(201).send({ user: publicUser(user) });
   });
 
   app.post('/api/auth/login', async (request, reply) => {
     const email = normalizeEmail(request.body?.email);
     const user = await findByEmail(email);
     if (!user || !(await verifyPassword(user.password_hash ?? user.passwordHash, request.body?.password))) throw httpError(401, '邮箱或密码错误');
+    store.users.set(user.id, user);
     const token = createSessionToken();
     await saveSession(user.id, token);
     setSessionCookie(reply, token, options.secureCookies);
-    return { user: mapUser(user) };
+    return { user: publicUser(user) };
   });
 
   app.post('/api/auth/logout', async (request, reply) => { await deleteSession(request.cookies?.[SESSION_COOKIE]); clearSessionCookie(reply, options.secureCookies); return { ok: true }; });
-  app.get('/api/auth/me', async (request, reply) => { if (!request.user) return reply.code(401).send({ error: '需要登录' }); return { user: mapUser(request.user) }; });
+  app.get('/api/auth/me', async (request, reply) => { if (!request.user) return reply.code(401).send({ error: '需要登录' }); return { user: publicUser(request.user) }; });
   app.patch('/api/me/settings', async (request, reply) => {
     if (!request.user) return reply.code(401).send({ error: '需要登录' });
     const musicEnabled = request.body?.musicEnabled;
@@ -124,10 +131,10 @@ export function registerAuthRoutes(app, options = {}) {
       const result = await dbQuery(db, `UPDATE users SET music_enabled = COALESCE($2, music_enabled), effects_enabled = COALESCE($3, effects_enabled), animation_mode = COALESCE($4, animation_mode)
         WHERE id = $1 RETURNING *`, [request.user.id, musicEnabled ?? null, effectsEnabled ?? null, motionMode ?? null]);
       if (result.rows[0]) store.users.set(result.rows[0].id, result.rows[0]);
-      return { user: mapUser(result.rows[0]) };
+      return { user: publicUser(result.rows[0]) };
     }
     const user = store.users.get(request.user.id); if (musicEnabled !== undefined) user.music_enabled = musicEnabled; if (effectsEnabled !== undefined) user.effects_enabled = effectsEnabled; if (motionMode !== undefined) user.animation_mode = motionMode;
-    return { user: mapUser(user) };
+    return { user: publicUser(user) };
   });
 }
 

@@ -81,7 +81,8 @@ describe('WebSocket visibility', () => {
     expect(observer.sent.map((message) => message.event?.eventType)).toEqual(['player_joined', 'round_started']);
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
-    expect(global.sent.filter((message) => message.type === 'global_banner')).toHaveLength(0);
+    expect(global.sent.filter((message) => message.type === 'global_banner' && message.banner?.queueName === 'economy')).toHaveLength(0);
+    expect(global.sent.some((message) => message.banner?.queueName === 'leaderboard')).toBe(true);
     await app.close();
   });
 

@@ -10,7 +10,7 @@ import {
   validateRaise
 } from '../game/rules.js';
 import { appendEvent, publicEvent, visibleRoom } from '../game/events.js';
-import { resolveUserTitles } from '../leaderboard/ranking.js';
+import { appendRankingChanges, resolveUserTitles, snapshotRanking } from '../leaderboard/ranking.js';
 
 export const MAX_SEATS = 6;
 export const TURN_TIMEOUT_MS = 60_000;
@@ -486,6 +486,7 @@ export class RoomService {
   settle(room) {
     if (room.status === 'settled' || !room.round || room.round.idempotency) return room;
     room.round.idempotency = true;
+    const beforeRanking = snapshotRanking(this.store.users.values());
     const players = roundPlayers(room);
     const payouts = calculateSidePotPayouts(players);
     const results = [];
@@ -516,6 +517,7 @@ export class RoomService {
         user.refill_generation = Number(user.refill_generation ?? 0) + 1;
       }
     }
+    appendRankingChanges(this.store, beforeRanking, snapshotRanking(this.store.users.values()));
     appendEvent(room, 'round_settled', {
       winnerUserId: winner?.userId ?? null,
       dealerUserId: room.dealerUserId,
