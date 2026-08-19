@@ -3,3 +3,14 @@ vendor/
 .jekyll-cache/
 _site/
 Gemfile.lock
+
+.superpowers/
+.worktrees/
+__pycache__/
+*.py[cod]
+server/.env
+server/node_modules/
+server/playwright-report/
+server/test-results/
+work-flow/.runtime/
+work-flow/config.local.json

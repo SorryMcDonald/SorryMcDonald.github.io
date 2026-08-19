@@ -1,0 +1,195 @@
+{
+  "assurance_levels": {
+    "L1": "light",
+    "L2": "conditional-gates",
+    "L3": "batch-and-evidence",
+    "L4": "confirmation-rollback-monitoring"
+  },
+  "concurrency": {
+    "max_readers": 3,
+    "max_writers": 1
+  },
+  "managed_files": [
+    ".gitignore",
+    "AGENTS.md",
+    "work-flow/.runtime/migration-backups/.gitkeep",
+    "work-flow/.runtime/operation-lock.json",
+    "work-flow/.runtime/transactions/.gitkeep",
+    "work-flow/.runtime/worker-results/.gitkeep",
+    "work-flow/AGENTS.md",
+    "work-flow/config.json",
+    "work-flow/config.local.json",
+    "work-flow/docs/PROJECT.md",
+    "work-flow/docs/README.md",
+    "work-flow/docs/archive/.gitkeep",
+    "work-flow/docs/decisions.md",
+    "work-flow/docs/decisions/.gitkeep",
+    "work-flow/docs/evidence/.gitkeep",
+    "work-flow/docs/handoffs/.gitkeep",
+    "work-flow/docs/requirements/.gitkeep",
+    "work-flow/project_rules.md",
+    "work-flow/scripts/Invoke-ProjectWorkflow.ps1",
+    "work-flow/scripts/Test-ProjectWorkflow.ps1",
+    "work-flow/scripts/_runtime/assets/project-template/root_AGENTS.md.tpl",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/.runtime/migration-backups/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/.runtime/operation-lock.json",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/.runtime/transactions/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/.runtime/worker-results/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/AGENTS.md.tpl",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/README.md.tpl",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/archive/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/decisions.md.tpl",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/decisions/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/evidence/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/handoffs/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/docs/requirements/.gitkeep",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/project_rules.md.tpl",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/Invoke-ProjectWorkflow.ps1",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/Test-ProjectWorkflow.ps1",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/invoke-project-workflow.sh",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/test-project-workflow.sh",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/workflow.ps1",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/workflow.py",
+    "work-flow/scripts/_runtime/assets/project-template/work-flow/scripts/workflow.sh",
+    "work-flow/scripts/_runtime/runtime-manifest.json",
+    "work-flow/scripts/_runtime/workflow_cli.py",
+    "work-flow/scripts/_runtime/workflow_core/__init__.py",
+    "work-flow/scripts/_runtime/workflow_core/archiving.py",
+    "work-flow/scripts/_runtime/workflow_core/constants.py",
+    "work-flow/scripts/_runtime/workflow_core/doctor.py",
+    "work-flow/scripts/_runtime/workflow_core/initialization.py",
+    "work-flow/scripts/_runtime/workflow_core/initializer.py",
+    "work-flow/scripts/_runtime/workflow_core/locking.py",
+    "work-flow/scripts/_runtime/workflow_core/migration.py",
+    "work-flow/scripts/_runtime/workflow_core/plan_generation.py",
+    "work-flow/scripts/_runtime/workflow_core/planner.py",
+    "work-flow/scripts/_runtime/workflow_core/routing.py",
+    "work-flow/scripts/_runtime/workflow_core/runtime_manifest.py",
+    "work-flow/scripts/_runtime/workflow_core/scanner.py",
+    "work-flow/scripts/_runtime/workflow_core/scanning.py",
+    "work-flow/scripts/_runtime/workflow_core/schema.py",
+    "work-flow/scripts/_runtime/workflow_core/state.py",
+    "work-flow/scripts/_runtime/workflow_core/template_merge.py",
+    "work-flow/scripts/_runtime/workflow_core/templates.py",
+    "work-flow/scripts/_runtime/workflow_core/transactions.py",
+    "work-flow/scripts/_runtime/workflow_core/upgrades.py",
+    "work-flow/scripts/_runtime/workflow_core/validation.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_attempts.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_execution.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_finalize.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_heartbeat.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_policy.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_preflight.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_process.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_recovery.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_results.py",
+    "work-flow/scripts/_runtime/workflow_core/worker_snapshot.py",
+    "work-flow/scripts/_runtime/workflow_core/workers.py",
+    "work-flow/scripts/invoke-project-workflow.sh",
+    "work-flow/scripts/test-project-workflow.sh",
+    "work-flow/scripts/workflow.ps1",
+    "work-flow/scripts/workflow.py",
+    "work-flow/scripts/workflow.sh",
+    "work-flow/state.md"
+  ],
+  "mode": "adopt",
+  "routing_policy": {
+    "code": {
+      "effort_chain": [
+        "xhigh",
+        "high",
+        "medium"
+      ],
+      "model": "gpt-5.6-terra",
+      "role": "builder"
+    },
+    "code-review": {
+      "effort_chain": [
+        "xhigh",
+        "high"
+      ],
+      "model": "gpt-5.6-terra",
+      "role": "code-reviewer"
+    },
+    "explore": {
+      "effort_chain": [
+        "high",
+        "medium"
+      ],
+      "model": "gpt-5.6-luna",
+      "role": "explorer"
+    },
+    "other": {
+      "effort_chain": [
+        "high",
+        "medium"
+      ],
+      "model": "gpt-5.6-terra",
+      "role": "explorer"
+    },
+    "plan": {
+      "effort_chain": [
+        "ultra",
+        "max",
+        "xhigh",
+        "high"
+      ],
+      "model": "gpt-5.6-sol",
+      "role": "pm"
+    },
+    "plan-review": {
+      "effort_chain": [
+        "ultra",
+        "max",
+        "xhigh",
+        "high"
+      ],
+      "model": "gpt-5.6-sol",
+      "role": "plan-reviewer"
+    },
+    "reporter": {
+      "effort_chain": [
+        "xhigh",
+        "high",
+        "medium"
+      ],
+      "model": "gpt-5.6-luna",
+      "role": "reporter"
+    },
+    "risk": {
+      "effort_chain": [
+        "ultra",
+        "max",
+        "xhigh",
+        "high"
+      ],
+      "model": "gpt-5.6-sol",
+      "role": "risk-reviewer"
+    },
+    "test": {
+      "effort_chain": [
+        "xhigh",
+        "high"
+      ],
+      "model": "gpt-5.6-terra",
+      "role": "tester"
+    },
+    "text": {
+      "effort_chain": [
+        "xhigh",
+        "high",
+        "medium"
+      ],
+      "model": "gpt-5.6-luna",
+      "role": "writer"
+    }
+  },
+  "runtime_manifest_sha256": "2528a0e4f1b8482f1408d25739fc25dea25503622659e1de0375db2253ea9ca0",
+  "runtime_version": "1.2.0",
+  "schema_version": 1,
+  "template_baselines": {
+    "work-flow/AGENTS.md": "475f33ed844ac9aed55b8115e18f3e7c179678e4a04a2703597d2181ee1434c1",
+    "work-flow/project_rules.md": "2ec780d074b69292996f0e3de8b491b3046d99d7f0631c4daa96efc715fae8db"
+  },
+  "template_version": "1.0.0"
+}
