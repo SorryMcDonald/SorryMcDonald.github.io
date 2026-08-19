@@ -7,7 +7,7 @@ async function register(app, email, nickname) {
 }
 
 describe('room economy and round state', () => {
-  it('continues after one all-in and requires a manual next round', async () => {
+  it('settles when only one player remains actionable and requires a manual next round', async () => {
     const app = await buildApp({ logger: false });
     const first = await register(app, 'a@example.com', '甲');
     const second = await register(app, 'b@example.com', '乙');
@@ -18,14 +18,11 @@ describe('room economy and round state', () => {
     expect(started.statusCode).toBe(200);
     const allIn = await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/actions`, headers: { cookie: first.cookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(allIn.statusCode).toBe(200);
-    expect(allIn.json().room.status).toBe('betting');
-    const secondAllIn = await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/actions`, headers: { cookie: second.cookie }, payload: { action: 'all_in', actionSeq: 1 } });
-    expect(secondAllIn.statusCode).toBe(200);
-    expect(secondAllIn.json().room.status).toBe('settled');
-    const settled = secondAllIn.json().room;
+    expect(allIn.json().room.status).toBe('settled');
+    const settled = allIn.json().room;
     const dealer = settled.dealerUserId === first.id ? first : second;
     const loser = settled.dealerUserId === first.id ? second : first;
-    await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: loser.cookie } });
+    await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: loser.cookie }, payload: { confirmationText: '黄总是大帅比' } });
     const next = await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/start-next`, headers: { cookie: dealer.cookie }, payload: {} });
     expect(next.statusCode).toBe(200);
     expect(next.json().room.status).toBe('betting');

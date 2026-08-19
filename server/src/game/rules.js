@@ -105,10 +105,9 @@ export function selectDealer(results = []) {
     .sort((a, b) => Number(b.net ?? 0) - Number(a.net ?? 0) || Number(b.settledOrder ?? 0) - Number(a.settledOrder ?? 0) || Number(a.seat ?? 0) - Number(b.seat ?? 0))[0] ?? null;
 }
 
-export function shouldSettle({ alive = 0, actionable = 0, allMatched = false, allActed = false } = {}) {
+export function shouldSettle({ alive = 0, actionable = 0 } = {}) {
   if (alive <= 1) return true;
-  if (actionable === 0) return true;
-  return Boolean(allMatched && allActed);
+  return actionable <= 1;
 }
 
 export function buildCompareEvents({ attacker, target, fee = 0, attackerWon } = {}) {

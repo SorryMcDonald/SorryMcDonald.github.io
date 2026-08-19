@@ -26,7 +26,7 @@ describe('WebSocket visibility', () => {
     expect(observer.sent[1].event.payload.cards).toHaveLength(1); expect(observer.sent[1].event.payload.typeName).toBe('对子');
   });
 
-  it('broadcasts room events and settlement banners from HTTP actions', async () => {
+  it('broadcasts room events without sending a zero-balance banner before manual refill', async () => {
     const app = await buildApp({ logger: false, attachGateway: true });
     const register = (email, nickname) => app.inject({ method: 'POST', url: '/api/auth/register', payload: { email, nickname, password: 'password-123' } });
     const first = await register('broadcast-test-a@example.com', '广播测试甲');
@@ -42,7 +42,7 @@ describe('WebSocket visibility', () => {
     expect(observer.sent.map((message) => message.event?.eventType)).toEqual(['player_joined', 'round_started']);
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
-    expect(global.sent.filter((message) => message.type === 'global_banner').map((message) => message.banner.message)).toHaveLength(1);
+    expect(global.sent.filter((message) => message.type === 'global_banner')).toHaveLength(0);
     await app.close();
   });
 });
