@@ -6,6 +6,21 @@ import { RoomService } from '../src/rooms/service.js';
 
 function socket() { return { readyState: 1, sent: [], send(value) { this.sent.push(JSON.parse(value)); }, on() {} }; }
 
+function managedSocket() {
+  const handlers = new Map();
+  return {
+    readyState: 1,
+    sent: [],
+    pings: 0,
+    terminated: 0,
+    send(value) { this.sent.push(JSON.parse(value)); },
+    ping() { this.pings += 1; },
+    terminate() { this.terminated += 1; this.emit('close'); },
+    on(name, handler) { if (!handlers.has(name)) handlers.set(name, []); handlers.get(name).push(handler); },
+    emit(name, ...args) { for (const handler of handlers.get(name) ?? []) handler(...args); }
+  };
+}
+
 describe('WebSocket visibility', () => {
   it('authenticates a database-backed session resolver', async () => {
     const sent = [];
@@ -68,5 +83,22 @@ describe('WebSocket visibility', () => {
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(global.sent.filter((message) => message.type === 'global_banner')).toHaveLength(0);
     await app.close();
+  });
+
+  it('tracks room connections once per socket and removes dead heartbeat clients', () => {
+    const lifecycle = { connectedCalls: [], disconnectedCalls: [], connected(roomId, userId) { this.connectedCalls.push([roomId, userId]); }, disconnected(roomId, userId) { this.disconnectedCalls.push([roomId, userId]); } };
+    const gateway = new WebSocketGateway({ lifecycle });
+    const client = managedSocket();
+    gateway.addRoomSocket('room-a', client, { userId: 'user-a' });
+
+    expect(lifecycle.connectedCalls).toEqual([['room-a', 'user-a']]);
+    gateway.sweepHeartbeat();
+    expect(client.pings).toBe(1);
+    client.emit('pong');
+    gateway.sweepHeartbeat();
+    expect(client.terminated).toBe(0);
+    gateway.sweepHeartbeat();
+    expect(client.terminated).toBe(1);
+    expect(lifecycle.disconnectedCalls).toEqual([['room-a', 'user-a']]);
   });
 });

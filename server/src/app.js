@@ -40,6 +40,7 @@ export async function buildApp(options = {}) {
       room: (roomId, event) => gateway.broadcastRoom(roomId, event),
       global: (banner) => gateway.broadcastGlobal(banner)
     });
+    app.addHook('onClose', async () => gateway.close());
   }
 
   app.lifecycle.restoreAll();
