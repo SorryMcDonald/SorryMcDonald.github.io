@@ -22,4 +22,13 @@ describe('Texas browser client contract',() => {
     expect(js).toContain('function seatPosition');
     expect(css).toMatch(/@media\(max-width:620px\)/);
   });
+
+  it('treats permitted spectating as a single global-open-card mode',async() => {
+    const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
+    const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');
+    expect(html).toContain('允许观战（观战视角全局明牌）');
+    expect(html).not.toContain('spectatorCardsInput');
+    expect(html).not.toContain('roomSpectatorCards');
+    expect(js).not.toContain('spectatorCards:');
+  });
 });

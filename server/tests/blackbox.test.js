@@ -161,13 +161,18 @@ describe('public black-box gameplay', () => {
     expect(snapshot.messages.some((message) => message.text === '<b>消息-1</b>')).toBe(false);
     expect(snapshot.messages.at(-1).text).toBe('<b>消息-21</b>');
 
-    const errorPromise = new Promise((resolve) => sockets[0].once('message', (raw) => resolve(JSON.parse(raw.toString()))));
+    const errorPromise = new Promise((resolve) => {
+      const onMessage = (raw) => {
+        const parsed = JSON.parse(raw.toString());
+        if (parsed.type !== 'error') return;
+        sockets[0].off('message', onMessage);
+        resolve(parsed);
+      };
+      sockets[0].on('message', onMessage);
+    });
     sockets[0].send(JSON.stringify({ type: 'chat', text: '过快一' }));
     sockets[0].send(JSON.stringify({ type: 'chat', text: '过快二' }));
-    const error = await waitFor(async () => {
-      const value = await Promise.race([errorPromise, new Promise((resolve) => setTimeout(() => resolve(null), 100))]);
-      return value?.type === 'error' ? value : null;
-    });
+    const error = await errorPromise;
     expect(error.error).toMatch(/过快/);
     await Promise.all(sockets.map(closeSocket));
   }, 15_000);

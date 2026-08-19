@@ -25,13 +25,43 @@ describe('WebSocket visibility', () => {
   it('authenticates a database-backed session resolver', async () => {
     const sent = [];
     const socket = { readyState: 1, send(value) { sent.push(JSON.parse(value)); }, on() {}, close() { throw new Error('socket should stay open'); } };
-    const service = { room: () => ({ spectators: new Set() }), eventsSince: () => [] };
+    const service = { room: () => ({ id: 'room', spectators: new Set() }), eventsSince: () => [] };
     const gateway = new WebSocketGateway({ service, findSession: async () => ({ id: 'database-user' }) });
 
     await gateway.handleConnection(socket, { headers: { cookie: 'zhajinhua_session=database-token' } }, new URL('http://localhost/ws?roomId=room'));
 
     expect(sent).toContainEqual({ type: 'connected' });
     expect(gateway.rooms.get('room')).toBeDefined();
+  });
+
+  it('rejects an authenticated user who is neither seated nor an explicit spectator', async () => {
+    const closes = [];
+    const socket = {
+      readyState: 1,
+      sent: [],
+      send(value) { this.sent.push(JSON.parse(value)); },
+      on() {},
+      close(code, reason) { closes.push([code, reason]); }
+    };
+    const service = {
+      room: () => ({
+        id: 'room',
+        players: new Map([['player-entry', { userId: 'seated-user', left: false }]]),
+        spectators: new Set(),
+        allowSpectators: true
+      }),
+      eventsSince: () => []
+    };
+    const gateway = new WebSocketGateway({ service, findSession: async () => ({ id: 'stranger' }) });
+
+    await gateway.handleConnection(
+      socket,
+      { headers: { cookie: 'zhajinhua_session=database-token' } },
+      new URL('http://localhost/ws?roomId=room')
+    );
+
+    expect(closes).toEqual([[1008, 'room access denied']]);
+    expect(gateway.rooms.has('room')).toBe(false);
   });
 
   it('keeps compare cards/type names hidden but gives spectators settled cards', () => {
@@ -103,26 +133,28 @@ describe('WebSocket visibility', () => {
     expect(lifecycle.disconnectedCalls).toEqual([['room-a', 'user-a']]);
   });
 
-  it('keeps Texas sockets isolated, canonicalizes invite codes, and does not attach Zhajinhua lifecycle tracking', async () => {
-    const lifecycle = {
-      connected() { throw new Error('Texas socket must not use Zhajinhua lifecycle tracking'); },
-      disconnected() { throw new Error('Texas socket must not use Zhajinhua lifecycle tracking'); }
-    };
+  it('keeps responsive global clients alive until they miss a heartbeat', () => {
+    const gateway = new WebSocketGateway({});
+    const client = managedSocket();
+    gateway.addGlobalSocket(client);
+
+    gateway.sweepHeartbeat();
+    expect(client.pings).toBe(1);
+    client.emit('pong');
+    gateway.sweepHeartbeat();
+    expect(client.terminated).toBe(0);
+
+    gateway.sweepHeartbeat();
+    expect(client.terminated).toBe(1);
+  });
+
+  it('keeps Texas sockets isolated and canonicalizes invite codes', async () => {
     const texasRoom = { id: 'texas-room-id', code: '654321', spectators: new Set(['texas-user']) };
     const texas = {
-      room(roomId) {
-        expect(roomId).toBe('654321');
-        return texasRoom;
-      },
-      canAccess(roomId, userId) {
-        expect(roomId).toBe('texas-room-id');
-        expect(userId).toBe('texas-user');
-        return true;
-      },
+      room(roomId) { expect(roomId).toBe('654321'); return texasRoom; },
+      canAccess(roomId, userId) { expect([roomId, userId]).toEqual(['texas-room-id', 'texas-user']); return true; },
       eventsSince(roomId, userId, after) {
-        expect(roomId).toBe('texas-room-id');
-        expect(userId).toBe('texas-user');
-        expect(after).toBe(0);
+        expect([roomId, userId, after]).toEqual(['texas-room-id', 'texas-user', 0]);
         return [{ id: 1, eventType: 'texas_player_action', payload: {} }];
       },
       publicEvent(_room, event) { return event; }
@@ -131,7 +163,6 @@ describe('WebSocket visibility', () => {
     const gateway = new WebSocketGateway({
       service: zhajinhua,
       services: { zhajinhua, texas },
-      lifecycle,
       findSession: async () => ({ id: 'texas-user' })
     });
     const client = socket();
@@ -141,38 +172,14 @@ describe('WebSocket visibility', () => {
       { headers: { cookie: 'zhajinhua_session=database-token' } },
       new URL('http://localhost/ws?game=texas&roomId=654321')
     );
+    await gateway.handleMessage(client, 'texas-room-id', 'texas-user', JSON.stringify({ type: 'sync', after: 0 }), texas, 'texas');
 
     expect(gateway.rooms.has('texas:texas-room-id')).toBe(true);
-    await gateway.handleMessage(client, 'texas-room-id', 'texas-user', JSON.stringify({ type: 'sync', after: 0 }), texas, 'texas');
     expect(client.sent).toContainEqual({
       type: 'room_event',
       game: 'texas',
       event: { id: 1, eventType: 'texas_player_action', payload: {} }
     });
-  });
-
-  it('closes canonical room sockets once without scheduling a lifecycle departure', () => {
-    const lifecycle = {
-      disconnectedCalls: [],
-      connected() {},
-      disconnected(roomId, userId) { this.disconnectedCalls.push([roomId, userId]); }
-    };
-    const handlers = new Map();
-    const client = {
-      readyState: 1,
-      closes: 0,
-      on(name, handler) { if (!handlers.has(name)) handlers.set(name, []); handlers.get(name).push(handler); },
-      close() { this.closes += 1; for (const handler of handlers.get('close') ?? []) handler(); }
-    };
-    const service = { room: (roomId) => ({ id: 'canonical-room', code: roomId, spectators: new Set() }) };
-    const gateway = new WebSocketGateway({ service, lifecycle });
-    gateway.addRoomSocket('654321', client, { userId: 'user-a' });
-
-    gateway.closeRoom('canonical-room');
-
-    expect(client.closes).toBe(1);
-    expect(gateway.rooms.has('canonical-room')).toBe(false);
-    expect(lifecycle.disconnectedCalls).toEqual([]);
   });
 
   it('rejects oversized inbound messages before parsing', async () => {

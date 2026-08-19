@@ -42,6 +42,9 @@ describe('email authentication', () => {
     const response = await app.inject({ method: 'PATCH', url: '/api/me/settings', headers: { cookie: registration.headers['set-cookie'] }, payload: { motionMode: 'disabled' } });
     expect(response.statusCode).toBe(200);
     expect(response.json().user.motionMode).toBe('disabled');
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: registration.headers['set-cookie'] } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.motionMode).toBe('disabled');
     await app.close();
   });
 });

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import {
   actionCost,
   calculateSidePotPayouts,
@@ -21,13 +21,19 @@ function httpError(statusCode, message) {
   return Object.assign(new Error(message), { statusCode });
 }
 
+function roomAnte(value) {
+  const ante = Number(value ?? STARTING_ANTE);
+  if (!Number.isSafeInteger(ante) || ante <= 0) throw httpError(400, '底注必须是正安全整数');
+  return ante;
+}
+
 function deck() {
   return SUITS.flatMap((suit) => Array.from({ length: 13 }, (_, index) => ({ rank: index + 2, suit })));
 }
 
-function shuffle(cards) {
+function shuffle(cards, randomInteger) {
   for (let index = cards.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(Math.random() * (index + 1));
+    const target = randomInteger(0, index + 1);
     [cards[index], cards[target]] = [cards[target], cards[index]];
   }
   return cards;
@@ -82,8 +88,10 @@ function setTurn(room, seat, now) {
 
 function debit(room, player, user, amount) {
   if (!Number.isSafeInteger(amount) || amount < 0) throw httpError(400, '下注金额无效');
-  if (amount > userBeans(user)) throw httpError(400, '下注豆子不足');
-  user.beans = userBeans(user) - amount;
+  const balance = userBeans(user);
+  if (amount > balance) throw httpError(400, '下注豆子不足');
+  user.beans = balance - amount;
+  if (balance > 0 && user.beans === 0) user.refill_generation = Number(user.refill_generation ?? 0) + 1;
   player.currentBet += amount;
   player.totalContribution += amount;
   room.pot += amount;
@@ -91,10 +99,11 @@ function debit(room, player, user, amount) {
 }
 
 export class RoomService {
-  constructor({ store } = {}) {
+  constructor({ store, randomInteger = randomInt } = {}) {
     this.store = store ?? { users: new Map() };
     if (!this.store.banners) this.store.banners = [];
     this.rooms = new Map();
+    this.randomInteger = randomInteger;
   }
 
   user(userId) {
@@ -133,17 +142,33 @@ export class RoomService {
     if ([...this.rooms.values()].some((room) => seatedPlayers(room).some((player) => player.userId === userId))) {
       throw httpError(409, '账号已有座位');
     }
+    const ante = roomAnte(input.ante);
+    let code;
+    if (input.code !== undefined && input.code !== null) {
+      code = String(input.code);
+      if (!/^\d{6}$/.test(code)) throw httpError(400, '房间码必须是 6 位数字');
+      if ([...this.rooms.values()].some((room) => room.code === code)) throw httpError(409, '房间码已存在');
+    } else {
+      for (let attempts = 0; attempts < 1000; attempts += 1) {
+        const candidate = String(this.randomInteger(100000, 1000000));
+        if (![...this.rooms.values()].some((room) => room.code === candidate)) {
+          code = candidate;
+          break;
+        }
+      }
+      if (!code) throw httpError(503, '暂时无法生成房间码');
+    }
     const id = randomUUID();
     const room = {
       id,
-      code: String(input.code ?? Math.floor(100000 + Math.random() * 900000)),
+      code,
       version: 1,
       hostUserId: userId,
       status: 'waiting',
       dealerUserId: null,
       dealerSeat: null,
       currentTurn: -1,
-      ante: Number(input.ante ?? STARTING_ANTE),
+      ante,
       level: 0,
       pot: 0,
       roundNumber: 0,
@@ -161,8 +186,8 @@ export class RoomService {
       round: null
     };
     this.rooms.set(id, room);
-    this.joinRoom(id, userId, 0);
     appendEvent(room, 'room_created', { code: room.code });
+    this.joinRoom(id, userId, 0);
     return room;
   }
 
@@ -275,6 +300,7 @@ export class RoomService {
     }
     touch(room);
     appendEvent(room, enabled ? 'spectator_joined' : 'spectator_left', { userId });
+    if (seatedPlayers(room).length === 0 && room.spectators.size === 0) this.reclaimRoom(room.id);
     return room;
   }
 
@@ -308,7 +334,7 @@ export class RoomService {
     room.bettingRound = 0;
     room.roundActedSeats = [];
     room.round = { id: randomUUID(), idempotency: false };
-    const cards = shuffle(deck());
+    const cards = shuffle(deck(), this.randomInteger);
     ordered.forEach((player, index) => {
       const user = this.user(player.userId);
       player.inRound = true;
@@ -370,6 +396,7 @@ export class RoomService {
       const raise = validateRaise({ amount: input.amount, level: room.level, balance: userBeans(user), seen: player.seen });
       amount = debit(room, player, user, raise.charge);
       room.level = raise.base;
+      room.roundActedSeats = [];
     } else if (type === 'all_in') {
       amount = debit(room, player, user, userBeans(user));
       player.allIn = true;
@@ -417,7 +444,7 @@ export class RoomService {
     debit(room, attacker, user, fee);
     attacker.lastAction = 'compare';
     attacker.actionSeq = seq;
-    const attackerWon = compareHands(attacker.cards, targetPlayer.cards) >= 0;
+    const attackerWon = compareHands(attacker.cards, targetPlayer.cards) > 0;
     const winner = attackerWon ? attacker : targetPlayer;
     const loser = attackerWon ? targetPlayer : attacker;
     loser.folded = true;
@@ -433,6 +460,10 @@ export class RoomService {
       fee
     });
     appendEvent(room, 'compare_resolved', {
+      attackerUserId: attacker.userId,
+      attackerSeat: attacker.seat,
+      targetUserId: targetPlayer.userId,
+      targetSeat: targetPlayer.seat,
       winnerUserId: winner.userId,
       winnerSeat: winner.seat,
       winner: winner.nickname,
@@ -513,9 +544,6 @@ export class RoomService {
       const user = this.user(result.userId);
       if (result.net > 0) user.wins = Number(user.wins ?? 0) + 1;
       else if (result.net < 0) user.losses = Number(user.losses ?? 0) + 1;
-      if (userBeans(user) === 0 && Number(result.startingBeans ?? 0) > 0) {
-        user.refill_generation = Number(user.refill_generation ?? 0) + 1;
-      }
     }
     appendRankingChanges(this.store, beforeRanking, snapshotRanking(this.store.users.values()));
     appendEvent(room, 'round_settled', {

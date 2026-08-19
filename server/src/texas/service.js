@@ -3,6 +3,7 @@ import { allowedActions, blindPositions, calculateTexasPots, evaluateTexasHand, 
 
 const ACTIVE_STREETS = new Set(['preflop', 'flop', 'turn', 'river']);
 const DEFAULTS = { smallBlind: 10, bigBlind: 20, minBuyIn: 400, maxBuyIn: 2000, defaultBuyIn: 1000, maxPlayers: 9 };
+export const TEXAS_TURN_TIMEOUT_MS = 60_000;
 
 function httpError(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }
 function numeric(value, fallback = 0) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
@@ -69,20 +70,52 @@ function cashOut(room, player, user, reason = 'leave') {
 }
 
 export class TexasService {
-  constructor({ store } = {}) {
+  constructor({ store, clock, turnTimeoutMs = TEXAS_TURN_TIMEOUT_MS } = {}) {
     this.store = store ?? { users:new Map(), banners:[] };
     if (!this.store.banners) this.store.banners = [];
     this.rooms = new Map();
+    this.clock = clock ?? { now: () => Date.now() };
+    this.turnTimeoutMs = turnTimeoutMs;
   }
 
   user(userId) { const user = this.store.users.get(userId); if (!user) throw httpError(404, '用户不存在'); return user; }
   room(roomId) { const room = this.rooms.get(roomId) ?? [...this.rooms.values()].find((value) => value.code === String(roomId)); if (!room) throw httpError(404, '德州房间不存在'); return room; }
+  reclaimRoom(roomId) {
+    const room = this.room(roomId);
+    if (activePlayers(room).length || room.spectators.size) return false;
+    for (const player of room.players.values()) {
+      player.holeCards = [];
+      player.evaluation = null;
+    }
+    room.players.clear();
+    room.spectators.clear();
+    room.messages = [];
+    room.chatLastAt = new Map();
+    room.events = [];
+    room.deck = [];
+    room.board = [];
+    room.hand = null;
+    return this.rooms.delete(room.id);
+  }
   canAccess(roomId, userId) {
     const room = this.room(roomId);
     return room.spectators.has(userId) || activePlayers(room).some((player) => player.userId === userId);
   }
-  touch(room) { room.version += 1; room.updatedAt = new Date().toISOString(); return room; }
+  now() { return Number(this.clock?.now?.() ?? Date.now()); }
+  timestamp() { return new Date(this.now()).toISOString(); }
+  touch(room) { room.version += 1; room.updatedAt = this.timestamp(); return room; }
   ledger(room, entry) { room.pendingLedger.push(entry); }
+
+  refreshTurnDeadline(room) {
+    if (!ACTIVE_STREETS.has(room.status) || room.currentTurn < 0) {
+      room.turnStartedAt = null;
+      room.turnDeadlineAt = null;
+      return room;
+    }
+    room.turnStartedAt = this.timestamp();
+    room.turnDeadlineAt = new Date(this.now() + this.turnTimeoutMs).toISOString();
+    return room;
+  }
 
   createRoom(userId, input = {}) {
     const user = this.user(userId);
@@ -95,13 +128,20 @@ export class TexasService {
     const id = randomUUID();
     const room = {
       id, code:String(input.code ?? Math.floor(100000 + Math.random() * 900000)), status:'waiting', hostUserId:userId,
-      isPublic:input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.spectatorCards),
+      isPublic:input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.allowSpectators),
       smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:bigBlind,
       pot:0, pots:[], board:[], deck:[], handNumber:0, hand:null, players:new Map(), spectators:new Set(),
-      events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+      events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[],
+      messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null,
+      createdAt:this.timestamp(), updatedAt:this.timestamp()
     };
     this.rooms.set(id, room);
-    this.joinRoom(id, userId, { seat:0, buyIn:input.buyIn });
+    try {
+      this.joinRoom(id, userId, { seat:0, buyIn:input.buyIn });
+    } catch (error) {
+      this.rooms.delete(id);
+      throw error;
+    }
     appendEvent(room, 'texas_room_created', { code:room.code, hostNickname:user.nickname });
     return this.touch(room);
   }
@@ -150,7 +190,7 @@ export class TexasService {
     const room = this.room(roomId);
     if (room.hostUserId !== userId) throw httpError(403, '只有房主可以修改房间设置');
     if (input.allowSpectators !== undefined) room.allowSpectators = Boolean(input.allowSpectators);
-    if (input.spectatorCards !== undefined) room.spectatorCards = Boolean(input.spectatorCards) && room.allowSpectators;
+    room.spectatorCards = room.allowSpectators;
     appendEvent(room, 'texas_room_settings', { allowSpectators:room.allowSpectators, spectatorCards:room.spectatorCards });
     return this.touch(room);
   }
@@ -199,7 +239,9 @@ export class TexasService {
     appendEvent(room, 'texas_hand_started', { handId:room.hand.id, handNumber:room.handNumber, dealerSeat:room.dealerSeat, smallBlindSeat:small.seat, bigBlindSeat:big.seat });
     appendEvent(room, 'texas_blinds_posted', { smallBlind:{ seat:small.seat, amount:smallPaid }, bigBlind:{ seat:big.seat, amount:bigPaid } });
     if (actionable(room).length === 0) this.runoutAndSettle(room);
-    return this.touch(room);
+    const updated = this.touch(room);
+    this.refreshTurnDeadline(room);
+    return updated;
   }
 
   action(roomId, userId, input = {}) {
@@ -254,7 +296,29 @@ export class TexasService {
     if (room.processedActions.length > 200) room.processedActions.splice(0, room.processedActions.length - 200);
     appendEvent(room, 'texas_player_action', { userId, nickname:player.nickname, seat:player.seat, action:type, paid, streetBet:player.streetBet, fullRaise });
     this.progress(room, player.seat);
-    return this.touch(room);
+    const updated = this.touch(room);
+    this.refreshTurnDeadline(room);
+    return updated;
+  }
+
+  timeoutFold(roomId, context = {}) {
+    const room = this.room(roomId);
+    if (!ACTIVE_STREETS.has(room.status)) return room;
+    const player = activePlayers(room).find((value) => value.inHand && value.seat === room.currentTurn);
+    if (!player) return room;
+    if (context.roomVersion !== undefined && Number(context.roomVersion) !== room.version) return room;
+    if (context.handId !== undefined && context.handId !== room.hand?.id) return room;
+    if (context.currentTurn !== undefined && Number(context.currentTurn) !== room.currentTurn) return room;
+    if (context.actionSeq !== undefined && Number(context.actionSeq) !== player.actionSeq) return room;
+    player.folded = true;
+    player.acted = true;
+    player.lastAction = 'timeout';
+    player.actionSeq += 1;
+    appendEvent(room, 'texas_player_action', { userId:player.userId, nickname:player.nickname, seat:player.seat, action:'timeout', paid:0, streetBet:player.streetBet, fullRaise:false });
+    this.progress(room, player.seat);
+    const updated = this.touch(room);
+    this.refreshTurnDeadline(room);
+    return updated;
   }
 
   progress(room, fromSeat) {
@@ -297,6 +361,7 @@ export class TexasService {
       results.push({ userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
     }
     room.status = 'settled'; room.currentTurn = -1; room.currentBet = 0; room.pot = 0;
+    room.turnStartedAt = null; room.turnDeadlineAt = null;
     room.hand.settledAt = new Date().toISOString(); room.hand.results = results;
     appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results });
     for (const player of [...room.players.values()].filter((value) => value.pendingLeave)) cashOut(room, player, this.user(player.userId), 'after_hand');
@@ -321,7 +386,30 @@ export class TexasService {
     }
     if (room.hostUserId === userId) room.hostUserId = activePlayers(room).find((value) => !value.pendingLeave)?.userId ?? null;
     if (!activePlayers(room).length) room.status = 'closed';
-    return this.touch(room);
+    const updated = this.touch(room);
+    this.refreshTurnDeadline(room);
+    return updated;
+  }
+
+  addMessage(roomId, userId, text, { now = this.now() } = {}) {
+    const room = this.room(roomId);
+    const player = activePlayers(room).find((value) => value.userId === userId);
+    if (!player) throw httpError(403, '观战者只能查看聊天');
+    const normalized = String(text ?? '').trim();
+    if (!normalized) throw httpError(400, '消息不能为空');
+    if (normalized.length > 120) throw httpError(400, '消息不能超过120个字符');
+    room.chatLastAt ??= new Map();
+    const previous = room.chatLastAt.get(userId);
+    const timestamp = Number(now);
+    if (Number.isFinite(previous) && timestamp - previous < 1000) throw httpError(429, '发送消息过于频繁');
+    room.chatLastAt.set(userId, timestamp);
+    room.messages ??= [];
+    const message = { id:(room.chatSeq = Number(room.chatSeq ?? 0) + 1), userId, nickname:player.nickname, text:normalized, createdAt:new Date(timestamp).toISOString() };
+    room.messages.push(message);
+    if (room.messages.length > 20) room.messages.splice(0, room.messages.length - 20);
+    appendEvent(room, 'texas_chat_message', { message });
+    this.touch(room);
+    return message;
   }
 
   listRooms() {
@@ -339,7 +427,7 @@ export class TexasService {
     if (!spectator && !own) throw httpError(403, '请先加入房间或申请观战');
     const settled = room.status === 'settled';
     const players = activePlayers(room).map((player) => {
-      const showCards = player.userId === userId || (settled && !player.folded) || (spectator && room.spectatorCards);
+      const showCards = player.userId === userId || (settled && !player.folded) || spectator;
       return {
         id:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, stack:player.stack,
         inHand:player.inHand, waiting:player.waiting, folded:player.folded, allIn:player.allIn, pendingLeave:player.pendingLeave,
@@ -349,12 +437,13 @@ export class TexasService {
     });
     return {
       id:room.id, code:room.code, status:room.status, hostUserId:room.hostUserId, version:room.version,
-      isPublic:room.isPublic, allowSpectators:room.allowSpectators, spectatorCards:room.spectatorCards, isSpectator:spectator,
+      isPublic:room.isPublic, allowSpectators:room.allowSpectators, spectatorCards:room.allowSpectators, isSpectator:spectator,
       smallBlind:room.smallBlind, bigBlind:room.bigBlind, minBuyIn:room.minBuyIn, maxBuyIn:room.maxBuyIn, maxPlayers:room.maxPlayers,
       dealerSeat:room.dealerSeat, currentTurn:room.currentTurn, currentBet:room.currentBet, minRaise:room.minRaise,
       pot:settled ? room.pots.reduce((sum,pot) => sum+numeric(pot.amount),0) : room.pot,
       pots:room.pots, board:room.board, handNumber:room.handNumber, handId:room.hand?.id ?? null,
-      players, allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
+       turnStartedAt:room.turnStartedAt ?? null, turnDeadlineAt:room.turnDeadlineAt ?? null,
+       players, messages:(room.messages ?? []).map((message) => ({ ...message })), allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
       recentEvents:room.events.slice(-30).map((event) => this.publicEvent(room, event, userId))
     };
   }
@@ -363,7 +452,7 @@ export class TexasService {
     if (event.eventType !== 'texas_hand_settled') return event;
     const spectator = room.spectators.has(userId);
     return { ...event, payload:{ ...event.payload, players:event.payload.players.map((player) => {
-      const showCards = !player.folded || player.userId === userId || (spectator && room.spectatorCards);
+      const showCards = !player.folded || player.userId === userId || spectator;
       return { ...player, holeCards:showCards ? player.holeCards : undefined, bestCards:showCards ? player.bestCards : undefined, handType:showCards ? player.handType : undefined };
     }) } };
   }

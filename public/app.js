@@ -25,6 +25,7 @@ const CARD_RANKS = { 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: 
 const CARD_SUITS = { S: '♠', H: '♥', C: '♣', D: '♦', '♠': '♠', '♥': '♥', '♣': '♣', '♦': '♦' };
 const RED_CARD_SUITS = new Set(['♥', '♦']);
 const ROOM_STATUS_LABELS = { waiting: '等待开局', betting: '下注中', comparing: '比牌中', settled: '本局已结算' };
+const REFILL_CONFIRMATION_TEXT = '黄总是大帅比';
 
 function makeCard(card) {
   const node = document.createElement('span');
@@ -73,9 +74,9 @@ function makeCard(card) {
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
-    credentials: 'include',
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
     ...options,
+    credentials: options.credentials ?? 'include',
+    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
     body: options.body && JSON.stringify(options.body)
   });
   const data = await response.json().catch(() => ({}));
@@ -142,6 +143,7 @@ function showTable() {
   authView.hidden = true;
   leaderboardView.hidden = true;
   tableView.hidden = false;
+  setActiveNav(state.room ? 'zjh' : 'lobby');
   renderAccount();
   connectGlobalWs();
   if (state.room) {
@@ -157,17 +159,23 @@ function showLeaderboard() {
   tableView.hidden = true;
   authView.hidden = true;
   leaderboardView.hidden = false;
+  setActiveNav('leaderboard');
   loadLeaderboard(state.leaderboardKind);
 }
 
 function showTableView() {
   leaderboardView.hidden = true;
   tableView.hidden = false;
+  setActiveNav(state.room ? 'zjh' : 'lobby');
   if (state.room) renderRoom();
   else {
     renderLobby();
     loadRoomList();
   }
+}
+
+function setActiveNav(destination) {
+  document.querySelectorAll('[data-nav]').forEach((item) => item.classList.toggle('active', item.dataset.nav === destination));
 }
 
 async function refreshUser() {
@@ -197,11 +205,11 @@ async function loadRoom() {
 
 function upperArcPositions(count) {
   const layouts = {
-    1: [{ left: 50, top: 15 }],
-    2: [{ left: 28, top: 18 }, { left: 72, top: 18 }],
-    3: [{ left: 18, top: 31 }, { left: 50, top: 13 }, { left: 82, top: 31 }],
-    4: [{ left: 13, top: 40 }, { left: 36, top: 16 }, { left: 64, top: 16 }, { left: 87, top: 40 }],
-    5: [{ left: 11, top: 44 }, { left: 29, top: 20 }, { left: 50, top: 12 }, { left: 71, top: 20 }, { left: 89, top: 44 }]
+    1: [{ left: 50, top: 20 }],
+    2: [{ left: 28, top: 22 }, { left: 72, top: 22 }],
+    3: [{ left: 18, top: 34 }, { left: 50, top: 18 }, { left: 82, top: 34 }],
+    4: [{ left: 13, top: 42 }, { left: 36, top: 21 }, { left: 64, top: 21 }, { left: 87, top: 42 }],
+    5: [{ left: 11, top: 54 }, { left: 25, top: 20 }, { left: 50, top: 17 }, { left: 75, top: 20 }, { left: 89, top: 54 }]
   };
   return layouts[count] ?? [];
 }
@@ -210,7 +218,12 @@ function projectSeats(players, userId) {
   const ordered = [...players].sort((left, right) => left.seat - right.seat);
   const selfIndex = ordered.findIndex((player) => player.userId === userId);
   if (selfIndex < 0) {
-    return ordered.map((player, index) => ({ player, position: upperArcPositions(ordered.length)[index] ?? { left: 50, top: 50 }, self: false }));
+    const arc = upperArcPositions(ordered.length - 1);
+    return ordered.map((player, index) => ({
+      player,
+      position: index === 0 ? { left: 50, top: 84 } : arc[index - 1] ?? { left: 50, top: 50 },
+      self: false
+    }));
   }
   const rotated = [...ordered.slice(selfIndex), ...ordered.slice(0, selfIndex)];
   const arc = upperArcPositions(rotated.length - 1);
@@ -222,6 +235,7 @@ function projectSeats(players, userId) {
 }
 
 function renderLobby() {
+  setActiveNav('lobby');
   stopCountdown();
   $('roomLobby').hidden = false;
   $('tableLayout').hidden = true;
@@ -363,6 +377,7 @@ function renderRoom() {
     renderLobby();
     return;
   }
+  setActiveNav('zjh');
   $('roomLobby').hidden = true;
   $('tableLayout').hidden = false;
   $('createRoomButton').hidden = true;
@@ -622,26 +637,44 @@ async function sendChat(event) {
 async function submitRefill(event) {
   event.preventDefault();
   $('refillError').textContent = '';
+  const confirmationText = $('refillConfirmation').value;
+  if (confirmationText !== REFILL_CONFIRMATION_TEXT) {
+    $('refillError').textContent = '确认文字不正确';
+    return;
+  }
   try {
-    const data = await api('/api/me/refill', { method: 'POST', body: {confirmationText:'黄总是大帅比'} });
+    const data = await api('/api/me/refill', { method: 'POST', body: { confirmationText } });
     applyUser(data.user);
     $('refillConfirmation').value = '';
     $('refillDialog').close();
     addFeed('补豆成功，余额已恢复至 100,000 豆');
     if (state.room) await loadRoom();
   } catch (error) {
-    if ($('refillConfirmation').value !== '黄总是大帅比') {
-      $('refillError').textContent = '确认文字不正确';
-      return;
-    }
     $('refillError').textContent = error.message;
   }
 }
 
 async function loadLeaderboard(kind) {
   state.leaderboardKind = kind;
-  const data = await api(`/api/leaderboards?kind=${kind}`);
   const list = $('leaderboardList');
+  document.querySelectorAll('.tab-button').forEach((button) => {
+    const active = button.dataset.kind === kind;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  let data;
+  try {
+    data = await api(`/api/leaderboards?kind=${encodeURIComponent(kind)}`);
+  } catch (error) {
+    $('leaderboardPodium')?.replaceChildren();
+    const notice = document.createElement('p');
+    notice.className = 'error-text';
+    notice.textContent = error.message;
+    list.replaceChildren(notice);
+    addFeed(error.message);
+    return;
+  }
+  renderLeaderboardPodium(data.entries);
   list.replaceChildren(...data.entries.map((entry) => {
     const row = document.createElement('article');
     row.className = 'leader-row';
@@ -667,10 +700,35 @@ async function loadLeaderboard(kind) {
     row.append(identity, record, beans);
     return row;
   }));
-  document.querySelectorAll('.tab-button').forEach((button) => button.classList.toggle('active', button.dataset.kind === kind));
+}
+
+function renderLeaderboardPodium(entries) {
+  const podium = $('leaderboardPodium');
+  if (!podium) return;
+  podium.replaceChildren(...(entries ?? []).slice(0, 3).map((entry, index) => {
+    const card = document.createElement('article');
+    card.className = 'podium-card';
+    const rank = document.createElement('span');
+    rank.className = 'podium-rank';
+    rank.textContent = String(entry.rank ?? index + 1);
+    const avatar = document.createElement('span');
+    avatar.className = 'podium-avatar';
+    avatar.textContent = String(entry.nickname ?? '?').slice(0, 1);
+    const profile = document.createElement('div');
+    const name = document.createElement('strong');
+    name.className = 'podium-name';
+    name.textContent = entry.nickname ?? '未命名玩家';
+    const beans = document.createElement('span');
+    beans.className = 'podium-beans';
+    beans.textContent = `${Number(entry.beans ?? 0).toLocaleString()} 豆`;
+    profile.append(name, beans);
+    card.append(rank, avatar, profile);
+    return card;
+  }));
 }
 
 async function saveSettings() {
+  const previous = { musicEnabled: state.musicEnabled, effectsEnabled: state.effectsEnabled, motionMode: state.motionMode };
   const body = { musicEnabled: $('musicToggle').checked, effectsEnabled: $('effectsToggle').checked, motionMode: $('motionSelect').value };
   state.musicEnabled = body.musicEnabled;
   state.effectsEnabled = body.effectsEnabled;
@@ -681,6 +739,14 @@ async function saveSettings() {
     const data = await api('/api/me/settings', { method: 'PATCH', body });
     applyUser(data.user);
   } catch (error) {
+    state.musicEnabled = previous.musicEnabled;
+    state.effectsEnabled = previous.effectsEnabled;
+    state.motionMode = previous.motionMode;
+    $('musicToggle').checked = previous.musicEnabled;
+    $('effectsToggle').checked = previous.effectsEnabled;
+    $('motionSelect').value = previous.motionMode;
+    document.body.dataset.motion = previous.motionMode;
+    applyAudioSettings();
     addFeed(error.message);
   }
 }
@@ -815,7 +881,6 @@ function applyAudioSettings() {
 
 $('authForm').addEventListener('submit', submitAuth);
 $('authModeToggle').addEventListener('click', () => setAuthMode(state.authMode === 'login' ? 'register' : 'login'));
-$('leaderboardButton').addEventListener('click', showLeaderboard);
 $('backToTable').addEventListener('click', showTableView);
 $('createRoomButton').addEventListener('click', async () => {
   if (state.room) return;
@@ -878,14 +943,7 @@ $('raiseForm').addEventListener('submit', async (event) => {
 });
 $('chatForm').addEventListener('submit', sendChat);
 $('refillButton').addEventListener('click', () => $('refillDialog').showModal());
-$('refillForm').addEventListener('submit', async (event) => {
-  if ($('refillConfirmation').value !== '黄总是大帅比') {
-    event.preventDefault();
-    $('refillError').textContent = '确认文字不正确';
-    return;
-  }
-  await submitRefill(event);
-});
+$('refillForm').addEventListener('submit', submitRefill);
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => $(button.dataset.closeDialog).close()));
 document.querySelectorAll('.tab-button').forEach((button) => button.addEventListener('click', () => loadLeaderboard(button.dataset.kind)));
 $('settingsButton').addEventListener('click', () => {
@@ -897,6 +955,23 @@ $('settingsButton').addEventListener('click', () => {
 $('musicToggle').addEventListener('change', saveSettings);
 $('effectsToggle').addEventListener('change', saveSettings);
 $('motionSelect').addEventListener('change', saveSettings);
+document.querySelectorAll('[data-nav]').forEach((button) => button.addEventListener('click', () => {
+  const destination = button.dataset.nav;
+  if (destination === 'leaderboard') {
+    showLeaderboard();
+    return;
+  }
+  if (destination === 'table' || destination === 'lobby' || destination === 'rooms' || destination === 'zjh') {
+    showTableView();
+    setActiveNav(destination === 'table' ? 'zjh' : destination);
+    if (destination !== 'table' && destination !== 'zjh' && !state.room) {
+      renderLobby();
+      loadRoomList();
+    }
+    return;
+  }
+  $('globalTicker').textContent = `${button.textContent}入口暂未开放，当前仅支持炸金花虚拟娱乐`;
+}));
 document.addEventListener('click', (event) => {
   startBackgroundMusic();
   const button = event.target.closest?.('button');

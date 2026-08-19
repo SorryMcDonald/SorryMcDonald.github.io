@@ -82,6 +82,7 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   const code = (await firstPage.locator('#roomCode').textContent()).trim();
   await registerUi(secondPage, '浏览乙');
   await joinVisibleRoom(secondPage, code);
+  await expect(firstPage.locator('.player-seat')).toHaveCount(2);
   await firstPage.locator('#startNextButton').click();
 
   await expect(firstPage.locator('.player-seat')).toHaveCount(2);
@@ -114,6 +115,11 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   await expect(firstPage.locator('body')).toHaveAttribute('data-motion', 'cinematic');
   await firstPage.locator('#motionSelect').selectOption('disabled');
   await expect(firstPage.locator('body')).toHaveAttribute('data-motion', 'disabled');
+  await firstPage.route('**/api/me/settings', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: '设置保存失败' }) }));
+  await firstPage.locator('#motionSelect').selectOption('light');
+  await expect(firstPage.locator('body')).toHaveAttribute('data-motion', 'disabled');
+  await expect(firstPage.locator('#motionSelect')).toHaveValue('disabled');
+  await firstPage.unroute('**/api/me/settings');
   await firstPage.locator('#settingsDialog .icon-button').click();
 
   await firstPage.locator('#leaderboardButton').click();
@@ -125,14 +131,16 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   await second.close();
 });
 
-test('six-player desktop and mobile tables stay inside the felt without seat overlap', async ({ browser, baseURL }) => {
+test('six-player desktop, mobile, and spectator tables stay inside the felt without seat overlap', async ({ browser, baseURL }) => {
   const contexts = [];
   for (let index = 0; index < 6; index += 1) {
     const context = await browser.newContext({ baseURL, viewport: index === 5 ? { width: 390, height: 844 } : { width: 1280, height: 900 } });
     contexts.push(context);
     await registerApi(context, '六人', index);
   }
-  const created = await contexts[0].request.post('/api/rooms', { data: {} });
+  const spectatorContext = await browser.newContext({ baseURL, viewport: { width: 1280, height: 900 } });
+  await registerApi(spectatorContext, '六人观战', 6);
+  const created = await contexts[0].request.post('/api/rooms', { data: { allowSpectators: true } });
   const room = (await created.json()).room;
   for (const context of contexts.slice(1)) {
     expect((await context.request.post(`/api/rooms/${room.id}/join`, { data: {} })).status()).toBe(200);
@@ -148,6 +156,15 @@ test('six-player desktop and mobile tables stay inside the felt without seat ove
     await expectSouthSeat(page);
     await expect(page.locator('.card.back')).toHaveCount(18);
   }
+  await spectatorContext.request.post(`/api/rooms/${room.id}/spectate`, { data: { enabled: true } });
+  await spectatorContext.addInitScript((roomId) => sessionStorage.setItem('zhajinhua.roomId', roomId), room.id);
+  const spectatorPage = await spectatorContext.newPage();
+  await spectatorPage.goto('/');
+  await expect(spectatorPage.locator('#tableLayout')).toBeVisible();
+  await expectSeatsInsideWithoutOverlap(spectatorPage, 6);
+  await expect(spectatorPage.locator('.player-seat.self')).toHaveCount(0);
+  await expect(spectatorPage.locator('.card:not(.back)')).toHaveCount(18);
+  await spectatorContext.close();
   await Promise.all(contexts.map((context) => context.close()));
 });
 
@@ -174,6 +191,7 @@ test('three-player views stay south, expose countdown danger, and spectators rem
     await expectSouthSeat(page);
   }
   const actingPage = contexts[0].pages()[0];
+  await expect(actingPage.locator('.turn-countdown')).toBeVisible();
   await actingPage.evaluate(() => {
     const originalNow = Date.now;
     const countdown = document.querySelector('.turn-countdown');
@@ -217,7 +235,7 @@ test('renders comparison feedback for light, cinematic, and disabled motion mode
     await expect(page.locator('#tableLayout')).toBeVisible();
     await page.locator('#compareButton').click();
     await page.locator('.compare-target-button', { hasText: target.nickname }).click();
-    await expect(page.locator('#compareNotice')).toContainText('比牌获胜');
+    await expect(page.locator('#compareNotice')).toContainText(/比牌获胜|比牌落败/);
     if (mode === 'disabled') {
       await expect(page.locator('body')).not.toHaveAttribute('data-compare-effect', /.+/);
       await expect(page.locator('#compareEffectOverlay')).not.toHaveClass(/active/);

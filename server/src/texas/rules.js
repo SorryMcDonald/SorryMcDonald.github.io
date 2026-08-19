@@ -64,8 +64,23 @@ export function calculateTexasPots(players = [], dealerSeat = 0) {
     const amount = (level - previous) * contributors.length;
     previous = level;
     if (amount <= 0) continue;
+    // A single contributor cannot form a contestable layer. Return their
+    // unmatched excess instead of recording it as a pot.
+    if (contributors.length === 1) {
+      payouts[contributors[0].id] += amount;
+      continue;
+    }
     const eligible = contributors.filter((player) => !player.folded && !player.left);
-    if (!eligible.length) continue;
+    if (!eligible.length) {
+      const share = Math.floor(amount / contributors.length);
+      let remainder = amount % contributors.length;
+      for (const contributor of contributors) {
+        const value = share + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder -= 1;
+        payouts[contributor.id] += value;
+      }
+      continue;
+    }
     let winners = [eligible[0]];
     for (const player of eligible.slice(1)) {
       const comparison = compareEvaluations(player.evaluation, winners[0].evaluation);

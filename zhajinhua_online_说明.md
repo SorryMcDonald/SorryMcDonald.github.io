@@ -36,6 +36,6 @@
 这块我建议继续迭代完善，你先把 Supabase 项目建好，我接着把房主推进回合和结算逻辑补完整、调通。
 ## 自建服务器部署边界
 
-生产环境使用 Ubuntu/Debian、Node.js 22、PostgreSQL 16、Nginx HTTPS/WSS。先执行两个 SQL 迁移，再以受保护的 `/etc/zhajinhua/*.env` 启动 API、Worker 和 WebSocket 三个进程。`server/deploy` 目录提供 systemd 与 Nginx 示例。
+生产环境使用 Ubuntu/Debian、Node.js 22、PostgreSQL 16、Nginx HTTPS/WSS。按 `001 -> 006` 顺序完成数据库初始化或升级后，通过 `server/deploy/compose.production.yaml` 启动单一 `app` 进程和 PostgreSQL；`app` 同时承载 API、WebSocket、超时与房间生命周期。`server/deploy` 中三个拆分 systemd 文件已废弃，不得安装或启用。
 
 Supabase 导出默认只生成数量、哈希、余额最高值和脱敏 ID；只有显式 `--apply` 才允许导入。导入前必须完成数据库备份、临时库抽样、旧会话声明校验和回滚演练。未完成观察清单前，部署状态保持“迁移未完成”。

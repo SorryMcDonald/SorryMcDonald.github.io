@@ -7,6 +7,75 @@ async function register(app,email,nickname) {
 }
 
 describe('Texas API contract',() => {
+  it('serializes chat mutations and lets spectators read but not write', async () => {
+    const app=await buildApp({ logger:false });
+    const host=await register(app,'texas-chat-host@example.com','德州聊天房主');
+    const observer=await register(app,'texas-chat-observer@example.com','德州聊天观战');
+    const created=await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{ allowSpectators:true } });
+    const room=created.json().room;
+    expect((await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/spectate`,headers:{ cookie:observer.cookie },payload:{ enabled:true } })).statusCode).toBe(200);
+    const denied=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/messages`,headers:{ cookie:observer.cookie },payload:{ text:'观战者发言' } });
+    expect(denied.statusCode).toBe(403);
+    const accepted=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/messages`,headers:{ cookie:host.cookie },payload:{ text:'  正常发言  ' } });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().message.text).toBe('正常发言');
+    const view=await app.inject({ method:'GET',url:`/api/texas/rooms/${room.id}`,headers:{ cookie:observer.cookie } });
+    expect(view.json().room.messages).toEqual([expect.objectContaining({ text:'正常发言' })]);
+    await app.close();
+  });
+
+  it('broadcasts Texas chat through the lifecycle event log and sync path', async () => {
+    const app=await buildApp({ logger:false,attachGateway:true });
+    const host=await register(app,'texas-chat-ws-host@example.com','德州聊天广播');
+    const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
+    const socket={ readyState:1,sent:[],send(value){ this.sent.push(JSON.parse(value)); },on(){} };
+    app.gateway.addRoomSocket(room.id,socket,{ userId:host.user.id,game:'texas' });
+
+    await app.gateway.handleMessage(socket,room.id,host.user.id,JSON.stringify({ type:'chat',text:'实时聊天' }),app.texas,'texas');
+
+    expect(socket.sent.some((message) => message.game==='texas' && message.event?.eventType==='texas_chat_message'))
+      .toBe(true);
+    const current=app.texas.room(room.id);
+    expect(current.events.at(-1)).toMatchObject({ eventType:'texas_chat_message',payload:{ message:{ text:'实时聊天' } } });
+    const sync={ readyState:1,sent:[],send(value){ this.sent.push(JSON.parse(value)); } };
+    await app.gateway.handleMessage(sync,room.id,host.user.id,JSON.stringify({ type:'sync',after:0 }),app.texas,'texas');
+    expect(sync.sent.some((message) => message.event?.eventType==='texas_chat_message')).toBe(true);
+    await app.close();
+  });
+
+  it('shares one mutation queue between both game lifecycles', async () => {
+    const app=await buildApp({ logger:false,attachGateway:true });
+    expect(app.texasLifecycle).toBeDefined();
+    expect(app.texasLifecycle.mutationQueue).toBe(app.lifecycle.mutationQueue);
+    await app.close();
+  });
+
+  it('schedules the Texas turn deadline after a versioned HTTP hand start', async () => {
+    const app=await buildApp({ logger:false,attachGateway:true });
+    const host=await register(app,'texas-timer-host@example.com','德州计时房主');
+    const guest=await register(app,'texas-timer-guest@example.com','德州计时客人');
+    const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
+    await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{} });
+    expect((await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} })).statusCode).toBe(200);
+    expect(app.texasLifecycle.turnTimers.has(room.id)).toBe(true);
+    await app.close();
+  });
+
+  it('keeps a committed HTTP mutation when a room broadcast fails', async () => {
+    const app=await buildApp({ logger:false,attachGateway:true });
+    const host=await register(app,'texas-postcommit-host@example.com','提交后房主');
+    const guest=await register(app,'texas-postcommit-guest@example.com','提交后客人');
+    const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
+    await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{} });
+    app.gateway.broadcastRoom=() => { throw new Error('socket closed during broadcast'); };
+
+    const response=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} });
+
+    expect(response.statusCode).toBe(200);
+    expect(app.texas.room(room.id).status).not.toBe('waiting');
+    await app.close();
+  });
+
   it('creates and joins rooms without exposing another player hole cards',async() => {
     const app=await buildApp({ logger:false,attachGateway:true });
     const host=await register(app,'texas-host@example.com','德州房主');

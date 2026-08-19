@@ -26,13 +26,34 @@ function gameFor(value) {
   return value === 'texas' ? 'texas' : 'zhajinhua';
 }
 
+function roomPlayers(room) {
+  if (room?.players && typeof room.players.values === 'function') return [...room.players.values()];
+  if (Array.isArray(room?.players)) return room.players;
+  // Keep minimal service doubles usable in unit tests. Production rooms always hydrate a player Map.
+  return null;
+}
+
+function canAccessZhajinhuaRoom(room, userId) {
+  const players = roomPlayers(room);
+  if (players === null) return true;
+  const seated = players.some((player) => player?.userId === userId && !player.left);
+  const spectator = room?.spectators?.has?.(userId) ?? false;
+  return seated || spectator;
+}
+
+function canAccessRoom(room, service, roomId, userId, game) {
+  if (game === 'texas') return typeof service?.canAccess === 'function' ? service.canAccess(roomId, userId) : true;
+  return canAccessZhajinhuaRoom(room, userId);
+}
+
 export class WebSocketGateway {
-  constructor({ service, services, store, findSession, lifecycle, heartbeatIntervalMs = 30_000, maxPayloadBytes = MAX_WS_PAYLOAD_BYTES } = {}) {
+  constructor({ service, services, store, findSession, lifecycle, texasLifecycle, heartbeatIntervalMs = 30_000, maxPayloadBytes = MAX_WS_PAYLOAD_BYTES } = {}) {
     this.service = service;
     this.services = { ...(service ? { zhajinhua: service } : {}), ...(services ?? {}) };
     this.store = store ?? service?.store;
     this.findSession = findSession;
     this.lifecycle = lifecycle;
+    this.texasLifecycle = texasLifecycle;
     this.heartbeatIntervalMs = heartbeatIntervalMs;
     this.maxPayloadBytes = maxPayloadBytes;
     this.rooms = new Map();
@@ -61,6 +82,7 @@ export class WebSocketGateway {
     this.rooms.get(key).add(entry);
     trackHeartbeat(socket);
     if (game === 'zhajinhua') this.lifecycle?.connected(canonicalRoomId, userId);
+    if (game === 'texas') this.texasLifecycle?.connected(canonicalRoomId, userId);
 
     let removed = false;
     const remove = ({ notifyLifecycle = true } = {}) => {
@@ -70,10 +92,23 @@ export class WebSocketGateway {
       entries?.delete(entry);
       if (entries?.size === 0) this.rooms.delete(key);
       if (notifyLifecycle && game === 'zhajinhua') this.lifecycle?.disconnected(canonicalRoomId, userId);
+      if (notifyLifecycle && game === 'texas') this.texasLifecycle?.disconnected(canonicalRoomId, userId);
     };
     entry.remove = remove;
     socket.on?.('close', () => remove());
     return remove;
+  }
+
+  closeUserRoomSockets(roomId, userId, game = 'zhajinhua') {
+    const canonicalRoomId = this.canonicalRoomId(roomId, game);
+    const key = this.roomKey(canonicalRoomId, game);
+    for (const entry of [...(this.rooms.get(key) ?? [])]) {
+      if (entry.userId !== userId) continue;
+      entry.remove?.({ notifyLifecycle: false });
+      if (entry.socket.readyState === undefined || entry.socket.readyState === 0 || entry.socket.readyState === 1) {
+        entry.socket.close?.(1008, 'room access denied');
+      }
+    }
   }
 
   addGlobalSocket(socket) {
@@ -92,6 +127,10 @@ export class WebSocketGateway {
     try { room = service?.room(canonicalRoomId); } catch {}
 
     for (const entry of this.rooms.get(this.roomKey(canonicalRoomId, game)) ?? []) {
+      if (room && !canAccessRoom(room, service, canonicalRoomId, entry.userId, game)) {
+        this.closeUserRoomSockets(canonicalRoomId, entry.userId, game);
+        continue;
+      }
       if (game === 'zhajinhua') {
         if (event.audience?.startsWith('user:') && event.audience !== `user:${entry.userId}`) continue;
         let spectator = entry.spectator;
@@ -201,6 +240,7 @@ export class WebSocketGateway {
     try { room = service.room(requestedRoomId); } catch { return socket.close(1008, 'room not found'); }
     const roomId = room.id ?? requestedRoomId;
     if (game === 'texas' && !service.canAccess(roomId, userId)) return socket.close(1008, 'room access denied');
+    if (game === 'zhajinhua' && !canAccessZhajinhuaRoom(room, userId)) return socket.close(1008, 'room access denied');
 
     const spectator = room.spectators?.has(userId) ?? false;
     this.addRoomSocket(roomId, socket, { userId, spectator, game });
@@ -217,19 +257,34 @@ export class WebSocketGateway {
     try { message = JSON.parse(raw.toString()); } catch { return send(socket, { type: 'error', error: '消息格式错误' }); }
     if (message.type === 'subscribe_global') return this.addGlobalSocket(socket);
     if (message.type === 'sync' && service) {
+      if (game === 'texas') {
+        if (!service.canAccess?.(roomId, userId)) {
+          this.closeUserRoomSockets(roomId, userId, game);
+          return;
+        }
+      } else {
+        let room;
+        try { room = service.room(roomId); } catch { return socket.close?.(1008, 'room not found'); }
+        if (!canAccessZhajinhuaRoom(room, userId)) {
+          this.closeUserRoomSockets(room.id ?? roomId, userId, game);
+          return;
+        }
+      }
       for (const event of service.eventsSince(roomId, userId, message.after ?? 0)) {
         send(socket, game === 'texas' ? { type: 'room_event', game, event } : { type: 'room_event', event });
       }
       return;
     }
-    if (game === 'zhajinhua' && message.type === 'chat' && this.service) {
-      if (this.lifecycle) {
-        await this.lifecycle.mutate(roomId, () => this.service.addMessage(roomId, userId, message.text));
+    if (message.type === 'chat' && service) {
+      if (game === 'zhajinhua' && this.lifecycle) {
+        await this.lifecycle.mutate(roomId, () => service.addMessage(roomId, userId, message.text));
+      } else if (game === 'texas' && this.texasLifecycle) {
+        await this.texasLifecycle.mutate(roomId, () => service.addMessage(roomId, userId, message.text));
       } else {
-        const room = this.service.room(roomId);
+        const room = service.room(roomId);
         const afterEventId = room.eventSeq;
-        this.service.addMessage(roomId, userId, message.text);
-        for (const event of room.events.filter((entry) => entry.id > afterEventId)) this.broadcastRoom(roomId, event);
+        service.addMessage(roomId, userId, message.text);
+        for (const event of room.events.filter((entry) => entry.id > afterEventId)) this.broadcastRoom(roomId, event, game);
       }
       return;
     }

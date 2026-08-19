@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { createTexasPersistence } from '../src/texas/persistence.js';
+import { createTexasPersistence, deserializeRoom, serializeRoom } from '../src/texas/persistence.js';
 import { TexasService } from '../src/texas/service.js';
 
 function fakeDb() {
@@ -19,6 +19,38 @@ function fakeDb() {
 }
 
 describe('Texas PostgreSQL persistence contract',() => {
+  it('keeps timers durable while resetting chat to the in-memory lifecycle on restore', () => {
+    const users=new Map([['u1',{ id:'u1',nickname:'恢复玩家',beans:100000,wins:0,losses:0 }]]);
+    const service=new TexasService({ store:{ users,banners:[] } });
+    const room=service.createRoom('u1',{ buyIn:1000 });
+    room.turnStartedAt='2026-08-19T00:00:00.000Z';
+    room.turnDeadlineAt='2026-08-19T00:01:00.000Z';
+    service.addMessage(room.id,'u1','临时聊天',{ now:1000 });
+    const restored=deserializeRoom(serializeRoom(room));
+    expect(restored.turnDeadlineAt).toBe(room.turnDeadlineAt);
+    expect(restored.messages).toEqual([]);
+    expect(restored.chatLastAt).toBeInstanceOf(Map);
+    expect(JSON.stringify(serializeRoom(room))).not.toMatch(/临时聊天/);
+  });
+
+  it('does not write historical or incremental chat events to texas_actions', async () => {
+    const users=new Map([['u1',{ id:'u1',nickname:'聊天过滤',beans:100000,wins:0,losses:0 }]]);
+    const service=new TexasService({ store:{ users,banners:[] } });
+    const room=service.createRoom('u1',{ buyIn:1000 });
+    room.events.push(
+      { id:900, eventType:'texas_chat_message', payload:{ message:{ text:'历史聊天' } } },
+      { id:901, eventType:'chat_message', payload:{ message:{ text:'错误类型聊天' } } },
+      { id:902, eventType:'texas_room_settings', payload:{ allowSpectators:true } }
+    );
+    expect(deserializeRoom({ ...serializeRoom(room), events:room.events }).events.some((event) => event.eventType.includes('chat_message'))).toBe(false);
+
+    const db=fakeDb();
+    await createTexasPersistence({ db,service }).flushRoom(room.id,-1,0);
+    const actionQueries=db.queries.filter((query) => /INSERT INTO texas_actions/i.test(query.text));
+    expect(actionQueries.some((query) => ['chat_message','texas_chat_message'].includes(query.values[3]))).toBe(false);
+    expect(actionQueries.some((query) => query.values[3] === 'texas_room_settings')).toBe(true);
+  });
+
   it('writes room, players, wallet ledger and events in one transaction',async() => {
     const users=new Map([['u1',{ id:'u1',nickname:'持久化玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
@@ -34,6 +66,22 @@ describe('Texas PostgreSQL persistence contract',() => {
     expect(sql).toMatch(/INSERT INTO texas_actions/);
     expect(sql).toMatch(/COMMIT/);
     expect(room.pendingLedger).toHaveLength(0);
+  });
+
+  it('deletes a reclaimed room and its cascading records in one transaction',async() => {
+    const users=new Map([['u1',{ id:'u1',nickname:'回收玩家',beans:100000,wins:0,losses:0 }]]);
+    const service=new TexasService({ store:{ users,banners:[] } });
+    const room=service.createRoom('u1',{ buyIn:1000 });
+    const db=fakeDb();
+
+    await createTexasPersistence({ db,service }).deleteRoom(room.id);
+
+    expect(db.queries.map((query) => query.text)).toEqual([
+      'BEGIN',
+      'DELETE FROM texas_rooms WHERE id=$1',
+      'COMMIT'
+    ]);
+    expect(db.queries[1].values).toEqual([room.id]);
   });
 
   it('rolls back and preserves pending entries when persistence fails',async() => {

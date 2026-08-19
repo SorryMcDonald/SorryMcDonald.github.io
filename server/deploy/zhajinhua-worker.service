@@ -1,16 +1,3 @@
-[Unit]
-Description=Zhajinhua game worker
-After=network.target postgresql.service
-
-[Service]
-User=zhajinhua
-WorkingDirectory=/opt/zhajinhua/server
-EnvironmentFile=/etc/zhajinhua/worker.env
-ExecStart=/usr/bin/node src/worker-entry.js
-Restart=on-failure
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-
-[Install]
-WantedBy=multi-user.target
+# Deprecated: production uses compose.production.yaml and one app process.
+# Do not install or enable this unit. Splitting HTTP, WebSocket, and workers
+# into separate Node processes breaks the shared in-memory room lifecycle.

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/index.js';
 import { RoomService } from '../src/rooms/service.js';
 
@@ -36,6 +36,148 @@ describe('room directory and departure', () => {
     const joinedSecond = await app.inject({ method: 'POST', url: `/api/rooms/${secondRoom.id}/join`, headers: { cookie: visitor.cookie }, payload: {} });
     expect(joinedSecond.statusCode).toBe(200);
 
+    await app.close();
+  });
+
+  it('ignores a client-supplied clock and captures server time after queued work', async () => {
+    const app = await buildApp({ logger: false });
+    const first = await register(app, 'clock-a@example.com', '时钟甲');
+    const second = await register(app, 'clock-b@example.com', '时钟乙');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: first.cookie }, payload: {} })).json().room;
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: second.cookie }, payload: {} });
+    const started = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: first.cookie }, payload: {} });
+    const startedRoom = started.json().room;
+    const current = startedRoom.players.find((player) => player.seat === startedRoom.currentTurn);
+    const cookie = current.userId === first.user.id ? first.cookie : second.cookie;
+    let now = Date.now();
+    app.lifecycle.clock.now = () => now;
+    let releaseBlocker;
+    const blocker = app.lifecycle.run(room.id, () => new Promise((resolve) => { releaseBlocker = resolve; }));
+    await Promise.resolve();
+    let queuedAction;
+    const actionQueued = new Promise((resolve) => { queuedAction = resolve; });
+    const originalMutate = app.lifecycle.mutate.bind(app.lifecycle);
+    vi.spyOn(app.lifecycle, 'mutate').mockImplementation((...args) => {
+      queuedAction();
+      return originalMutate(...args);
+    });
+
+    const actionRequest = app.inject({
+      method: 'POST',
+      url: `/api/rooms/${room.id}/actions`,
+      headers: { cookie },
+      payload: { action: 'call', actionSeq: 1, now: 0 }
+    });
+    await actionQueued;
+    now += 5_000;
+    releaseBlocker();
+    await blocker;
+    const acted = await actionRequest;
+
+    expect(acted.statusCode).toBe(200);
+    expect(Date.parse(acted.json().room.turnStartedAt)).toBe(now);
+    await app.close();
+  });
+
+  it('removes a newly created room when its first persistence flush fails', async () => {
+    const app = await buildApp({
+      logger: false,
+      persistence: { async flushRoom() { throw new Error('database unavailable'); } }
+    });
+    const mutate = vi.spyOn(app.lifecycle, 'mutate');
+    const account = await register(app, 'create-failure@example.com', '建房失败');
+
+    const response = await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: account.cookie }, payload: {} });
+
+    expect(response.statusCode).toBe(500);
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(app.rooms.rooms.size).toBe(0);
+    await app.close();
+  });
+
+  it('requires an explicit boolean when changing spectator permission', async () => {
+    const app = await buildApp({ logger: false });
+    const owner = await register(app, 'observe-owner@example.com', '观战房主');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: owner.cookie }, payload: {} })).json().room;
+
+    const missing = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/observe`, headers: { cookie: owner.cookie }, payload: {} });
+    expect(missing.statusCode).toBe(400);
+    const enabled = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/observe`, headers: { cookie: owner.cookie }, payload: { enabled: true } });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().room.allowSpectators).toBe(true);
+    await app.close();
+  });
+
+  it('defaults omitted spectate enabled to true and rejects non-boolean values', async () => {
+    const app = await buildApp({ logger: false });
+    const owner = await register(app, 'spectate-owner@example.com', '观战房主');
+    const viewer = await register(app, 'spectate-viewer@example.com', '观战用户');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: owner.cookie }, payload: { allowSpectators: true } })).json().room;
+
+    const invalid = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/spectate`, headers: { cookie: viewer.cookie }, payload: { enabled: 'true' } });
+    expect(invalid.statusCode).toBe(400);
+
+    const defaultEnabled = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/spectate`, headers: { cookie: viewer.cookie }, payload: {} });
+    expect(defaultEnabled.statusCode).toBe(200);
+    expect(defaultEnabled.json().room.isSpectator).toBe(true);
+    await app.close();
+  });
+
+  it('reclaims an empty room when its final spectator stops spectating', async () => {
+    const deleted = [];
+    const app = await buildApp({
+      logger: false,
+      persistence: {
+        async flushRoom() {},
+        async deleteRoom(roomId) { deleted.push(roomId); }
+      }
+    });
+    const owner = await register(app, 'spectate-reclaim@example.com', '回收观战者');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: owner.cookie }, payload: { allowSpectators: true } })).json().room;
+
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/spectate`, headers: { cookie: owner.cookie }, payload: { enabled: true } });
+    const response = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/spectate`, headers: { cookie: owner.cookie }, payload: { enabled: false } });
+
+    expect(response.statusCode).toBe(200);
+    expect(app.rooms.rooms.has(room.id)).toBe(false);
+    expect(deleted).toEqual([room.id]);
+    await app.close();
+  });
+
+  it('creates safe room messages through the lifecycle with seat and rate checks', async () => {
+    const flushed = [];
+    const app = await buildApp({
+      logger: false,
+      attachGateway: true,
+      persistence: { async flushRoom(roomId) { flushed.push(roomId); } }
+    });
+    const owner = await register(app, 'message-owner@example.com', '发言玩家');
+    const outsider = await register(app, 'message-outsider@example.com', '房外玩家');
+    const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: owner.cookie }, payload: {} })).json().room;
+    const broadcast = vi.spyOn(app.gateway, 'broadcastRoom');
+
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, payload: { text: '未登录' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: outsider.cookie }, payload: { text: '房外发言' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: owner.cookie }, payload: { text: '' } })).statusCode).toBe(400);
+
+    let now = 10_000;
+    app.lifecycle.clock.now = () => now;
+    const created = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: owner.cookie }, payload: { text: '<b>纯文本</b>' } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().message).toMatchObject({ userId: owner.user.id, nickname: '发言玩家', text: '<b>纯文本</b>' });
+    expect(created.json().message).toHaveProperty('id');
+    expect(created.json().message).toHaveProperty('createdAt');
+    expect(flushed).toContain(room.id);
+    expect(broadcast).toHaveBeenCalledWith(room.id, expect.objectContaining({ eventType: 'chat_message' }));
+
+    now += 999;
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: owner.cookie }, payload: { text: '过快' } })).statusCode).toBe(429);
+    now += 1;
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: owner.cookie }, payload: { text: '可以发送' } })).statusCode).toBe(200);
+
+    const missing = await app.inject({ method: 'POST', url: '/api/rooms/000000/messages', headers: { cookie: owner.cookie }, payload: { text: '不存在' } });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error).toMatch(/房间不存在/);
     await app.close();
   });
 
@@ -77,6 +219,22 @@ function startedService(playerCount = 2) {
 }
 
 describe('RoomService approved game state machine', () => {
+  it('validates room codes and antes and retries generated code collisions', () => {
+    const store = gameStore(4);
+    const generatedCodes = [100000, 100000, 550000];
+    const service = new RoomService({ store, randomInteger: () => generatedCodes.shift() });
+    expect(() => service.createRoom('user-0', { code: 'abc', ante: 10 })).toThrow(/房间码/);
+    expect(() => service.createRoom('user-0', { code: '123456', ante: -1 })).toThrow(/底注/);
+    expect(() => service.createRoom('user-0', { code: '123456', ante: 0 })).toThrow(/底注/);
+    service.createRoom('user-0', { code: '123456', ante: 10 });
+    expect(() => service.createRoom('user-1', { code: '123456', ante: 10 })).toThrow(/房间码/);
+
+    const first = service.createRoom('user-1');
+    const second = service.createRoom('user-2');
+    expect(first.code).toBe('100000');
+    expect(second.code).toBe('550000');
+  });
+
   it('has six fixed seats and rejects a seventh seated player', () => {
     const store = gameStore();
     const service = new RoomService({ store });
@@ -113,6 +271,21 @@ describe('RoomService approved game state machine', () => {
     expect(room.bettingRound).toBe(1);
   });
 
+  it('requires every other player to act again after a raise', () => {
+    const { service, room } = startedService(3);
+    service.action(room.id, 'user-0', { action: 'call', actionSeq: 1 });
+    service.action(room.id, 'user-1', { action: 'call', actionSeq: 1 });
+    service.action(room.id, 'user-2', { action: 'raise', amount: 20, actionSeq: 1 });
+
+    expect(room.bettingRound).toBe(0);
+    expect(room.roundActedSeats).toEqual([2]);
+    expect(room.currentTurn).toBe(0);
+
+    service.action(room.id, 'user-0', { action: 'call', actionSeq: 2 });
+    service.action(room.id, 'user-1', { action: 'call', actionSeq: 2 });
+    expect(room.bettingRound).toBe(1);
+  });
+
   it('forces settlement only after the twentieth complete betting round', () => {
     const { service, room } = startedService(2);
     for (let actionIndex = 0; actionIndex < 40; actionIndex += 1) {
@@ -144,5 +317,37 @@ describe('RoomService approved game state machine', () => {
     expect(room.currentTurn).toBe(turn);
     expect(target.revealed).toBe(true);
     expect(room.events.at(-1)).toMatchObject({ eventType: 'hand_revealed', payload: { userId: target.userId, seat: target.seat } });
+  });
+
+  it('identifies both seats in compare_resolved without exposing either hand', () => {
+    const { service, room } = startedService(3);
+    const attacker = [...room.players.values()].find((player) => player.userId === 'user-0');
+    const target = [...room.players.values()].find((player) => player.userId === 'user-1');
+
+    service.action(room.id, attacker.userId, { action: 'compare', targetSeat: target.seat, actionSeq: 1 });
+
+    const event = room.events.findLast((entry) => entry.eventType === 'compare_resolved');
+    expect(event.payload).toMatchObject({
+      attackerUserId: attacker.userId,
+      attackerSeat: attacker.seat,
+      targetUserId: target.userId,
+      targetSeat: target.seat
+    });
+    expect(event.payload).not.toHaveProperty('cards');
+    expect(event.payload).not.toHaveProperty('handType');
+  });
+
+  it('eliminates the attacker when compared hands are equal', () => {
+    const { service, room } = startedService(3);
+    const attacker = [...room.players.values()].find((player) => player.userId === 'user-0');
+    const target = [...room.players.values()].find((player) => player.userId === 'user-1');
+    const hand = [{ rank: 14, suit: 'S' }, { rank: 13, suit: 'H' }, { rank: 9, suit: 'D' }];
+    attacker.cards = hand;
+    target.cards = hand.map((card) => ({ ...card }));
+
+    service.action(room.id, attacker.userId, { action: 'compare', targetSeat: target.seat, actionSeq: 1 });
+
+    expect(attacker.folded).toBe(true);
+    expect(target.folded).toBe(false);
   });
 });

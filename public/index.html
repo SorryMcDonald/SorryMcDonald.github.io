@@ -6,15 +6,23 @@
   <title>炸金花 · 虚拟娱乐牌桌</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body data-motion="light">
+<body data-game="zhajinhua" data-motion="light">
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-mark">♠</span><span class="brand-name">炸金花</span><span class="brand-sub">虚拟娱乐牌桌</span></div>
-      <nav class="top-actions" aria-label="账号导航">
-        <button id="leaderboardButton" class="ghost-button" type="button">排行榜</button>
-        <button id="settingsButton" class="ghost-button" type="button">设置</button>
-        <div class="account-summary"><span id="accountLabel" class="account-label">未登录</span><span id="accountTitles" class="account-titles"></span></div>
+      <div class="brand"><span class="brand-mark">P</span><span class="brand-name">牌局</span><span class="brand-sub">虚拟娱乐牌桌</span></div>
+      <nav class="primary-nav" aria-label="游戏导航">
+        <button class="nav-link" type="button" data-nav="table">牌局</button>
+        <button class="nav-link" type="button" data-nav="lobby">游戏大厅</button>
+        <button class="nav-link" type="button" data-nav="rooms">公开房间</button>
+        <a class="nav-link nav-link-muted" href="/dezhou.html">德州扑克</a>
+        <button class="nav-link nav-link-muted" type="button" data-nav="landlord">斗地主</button>
+        <button class="nav-link active" type="button" data-nav="zjh">炸金花</button>
+        <button id="leaderboardButton" class="nav-link" type="button" data-nav="leaderboard">排行榜</button>
       </nav>
+      <div class="top-actions" aria-label="账号导航">
+        <button id="settingsButton" class="icon-button top-settings" type="button" aria-label="设置" title="设置">⚙</button>
+        <div class="account-summary"><span id="accountLabel" class="account-label">未登录</span><span id="accountTitles" class="account-titles"></span></div>
+      </div>
     </header>
     <div id="globalTicker" class="ticker" aria-live="polite"></div>
 
@@ -76,16 +84,17 @@
 
           <div class="table-info">
             <section class="round-panel"><div class="panel-heading"><h2>牌局动态</h2><span>第 <b id="bettingRoundLabel">0</b> 轮</span></div><div id="roundFeed" class="round-feed" aria-live="polite"></div></section>
-            <section class="chat-panel"><div class="panel-heading"><h2>房间聊天</h2><span id="chatModeLabel"></span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm"><input id="chatInput" maxlength="120" autocomplete="off" placeholder="说点什么"><button id="chatSendButton" class="primary-button" type="submit">发送</button></form></section>
+            <section class="chat-panel"><div class="panel-heading"><h2>房间聊天</h2><span id="chatModeLabel"></span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm"><input id="chatInput" maxlength="120" autocomplete="off" aria-label="房间聊天输入" placeholder="说点什么"><button id="chatSendButton" class="primary-button" type="submit">发送</button></form></section>
           </div>
         </div>
       </section>
 
       <section id="leaderboardView" hidden>
         <div class="page-heading"><button id="backToTable" class="ghost-button" type="button">返回牌桌</button><div><p class="eyebrow">GLOBAL RANKING</p><h1>排行榜</h1></div></div>
-        <div class="leaderboard-tabs" role="tablist"><button class="tab-button" data-kind="wealth" type="button">财富榜</button><button class="tab-button active" data-kind="wins" type="button">赌神榜</button><button class="tab-button" data-kind="losses" type="button">散财榜</button></div>
+        <div class="leaderboard-tabs" role="tablist"><button class="tab-button" role="tab" aria-selected="false" aria-controls="leaderboardList" data-kind="wealth" type="button">财富榜</button><button class="tab-button active" role="tab" aria-selected="true" aria-controls="leaderboardList" data-kind="wins" type="button">赌神榜</button><button class="tab-button" role="tab" aria-selected="false" aria-controls="leaderboardList" data-kind="losses" type="button">散财榜</button></div>
+        <div id="leaderboardPodium" class="leaderboard-podium" aria-label="本榜前三名"></div>
         <div class="leaderboard-head"><span>排名 / 玩家</span><span>对局</span><span>余额</span></div>
-        <div id="leaderboardList" class="leaderboard-list"></div>
+        <div id="leaderboardList" class="leaderboard-list" role="tabpanel"></div>
       </section>
     </main>
 

@@ -199,7 +199,10 @@ export async function getLeaderboard(first, second, third) {
   requireDb(db);
   const sortColumn = kind === 'wins' ? 'wins' : kind === 'losses' ? 'losses' : null;
   if (!sortColumn) throw new RangeError('leaderboard kind must be wins or losses');
-  const safeLimit = Math.min(Math.max(Number(limit ?? 100), 1), 1000);
+  const parsedLimit = Number(limit ?? 100);
+  const safeLimit = Number.isSafeInteger(parsedLimit)
+    ? Math.min(Math.max(parsedLimit, 1), 1000)
+    : 100;
   const result = await db.query(
     `SELECT id, nickname, beans, wins, losses,
             row_number() OVER (ORDER BY ${sortColumn} DESC, lower(nickname), id) AS rank

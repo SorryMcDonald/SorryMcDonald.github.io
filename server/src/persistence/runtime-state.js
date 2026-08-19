@@ -14,6 +14,14 @@ function mapBanner(row) {
   };
 }
 
+export function isTransientChatEvent(event) {
+  return event?.eventType === 'chat_message' || event?.eventType === 'texas_chat_message';
+}
+
+function durableEvents(events) {
+  return (events ?? []).filter((event) => !isTransientChatEvent(event));
+}
+
 export async function hydrateStore(db) {
   const usersResult = await db.query(`SELECT id, email, password_hash, nickname, beans, wins, losses,
     music_enabled, effects_enabled, animation_mode, refill_generation,
@@ -33,7 +41,7 @@ export function serializeRoom(room) {
     ...durable,
     players: [...room.players.entries()],
     spectators: [...room.spectators],
-    events: (room.events ?? []).filter((event) => event.eventType !== 'chat_message')
+    events: durableEvents(room.events)
   };
 }
 
@@ -43,7 +51,7 @@ export function deserializeRoom(state) {
     ...state,
     players: new Map(Array.isArray(state.players) ? state.players : []),
     spectators: new Set(Array.isArray(state.spectators) ? state.spectators : []),
-    events: Array.isArray(state.events) ? state.events.filter((event) => event.eventType !== 'chat_message') : [],
+    events: durableEvents(Array.isArray(state.events) ? state.events : []),
     messages: [],
     chatLastAt: new Map()
   };
@@ -130,26 +138,26 @@ export function createPersistence({ db, store, roomService }) {
       }
     },
 
-    async flushStore(bannerStart = store.banners.length) {
+    async flushStore(bannerStart = store.banners.length, banners = store.banners.slice(bannerStart)) {
       await withTransaction(db, async (client) => {
         await persistUsers(client, store.users);
-        await persistBanners(client, store.banners.slice(bannerStart));
+        await persistBanners(client, banners);
       });
     },
 
-    async flushRoom(roomId, bannerStart = store.banners.length) {
+    async flushRoom(roomId, bannerStart = store.banners.length, banners = store.banners.slice(bannerStart)) {
       const room = roomService.room(roomId);
       await withTransaction(db, async (client) => {
         await persistUsers(client, store.users);
         await persistRoom(client, room);
-        await persistBanners(client, store.banners.slice(bannerStart));
+        await persistBanners(client, banners);
       });
     },
 
-    async deleteRoom(roomId, bannerStart = store.banners.length) {
+    async deleteRoom(roomId, bannerStart = store.banners.length, banners = store.banners.slice(bannerStart)) {
       await withTransaction(db, async (client) => {
         await persistUsers(client, store.users);
-        await persistBanners(client, store.banners.slice(bannerStart));
+        await persistBanners(client, banners);
         await client.query('DELETE FROM rooms WHERE id = $1', [roomId]);
       });
     }

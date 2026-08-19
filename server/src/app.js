@@ -7,6 +7,7 @@ import { registerRoomRoutes } from './rooms/routes.js';
 import { registerLeaderboardRoutes } from './leaderboard/routes.js';
 import { WebSocketGateway } from './ws/gateway.js';
 import { registerTexasRoutes } from './texas/routes.js';
+import { TexasLifecycleController } from './texas/lifecycle.js';
 
 export async function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? config.logger });
@@ -30,8 +31,16 @@ export async function buildApp(options = {}) {
   registerTexasRoutes(app, {
     service: options.texasService,
     store: options.store ?? app.auth.store,
-    persistence: options.texasPersistence
+    persistence: options.texasPersistence,
+    mutationQueue: app.lifecycle.mutationQueue
   });
+
+  const texasLifecycle = options.texasLifecycle ?? new TexasLifecycleController({
+    service: app.texas,
+    persistence: options.texasPersistence,
+    mutationQueue: app.lifecycle.mutationQueue
+  });
+  app.decorate('texasLifecycle', texasLifecycle);
 
   if (options.attachGateway) {
     const gateway = new WebSocketGateway({
@@ -39,7 +48,8 @@ export async function buildApp(options = {}) {
       services: { zhajinhua:app.rooms, texas:app.texas },
       store: options.store ?? app.auth.store,
       findSession: app.auth.findSession,
-      lifecycle: app.lifecycle
+      lifecycle: app.lifecycle,
+      texasLifecycle
     });
     gateway.attach(app.server);
     app.decorate('gateway', gateway);
@@ -48,11 +58,15 @@ export async function buildApp(options = {}) {
       global: (banner) => gateway.broadcastGlobal(banner),
       reclaim: (roomId) => gateway.closeRoom(roomId)
     });
+    app.texasLifecycle.broadcastRoom = (roomId, event) => gateway.broadcastRoom(roomId, event, 'texas');
+    app.texasLifecycle.reclaimRoomSockets = (roomId) => gateway.closeRoom(roomId, 'texas');
     app.addHook('onClose', async () => gateway.close());
   }
 
   app.lifecycle.restoreAll();
   app.addHook('onClose', async () => app.lifecycle.close());
+  app.texasLifecycle.restoreAll();
+  app.addHook('onClose', async () => app.texasLifecycle.close());
 
   app.get('/healthz', async () => ({ ok: true }));
   return app;

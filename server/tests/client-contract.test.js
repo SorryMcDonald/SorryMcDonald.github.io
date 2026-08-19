@@ -8,6 +8,11 @@ describe('browser client contract', () => {
     expect(html).toContain('本游戏仅虚拟娱乐，禁止任何形式现金赌博，禁止线下结算，违者责任自负');
     expect(html).toContain('leaderboardButton'); expect(html).toContain('observeButton'); expect(html).toContain('musicToggle'); expect(html).toContain('motionSelect');
     expect(html + js).not.toMatch(/supabase|SUPABASE_URL|SUPABASE_ANON_KEY/i); expect(js).toContain('textContent'); expect(js).toContain('/api/leaderboards');
+    expect(html).toMatch(/class="tab-button active"[^>]*role="tab"[^>]*aria-selected="true"[^>]*aria-controls="leaderboardList"/);
+    expect(html).toMatch(/id="leaderboardList"[^>]*role="tabpanel"/);
+    expect(js).toContain("setAttribute('aria-selected'");
+    expect(js).toMatch(/async function loadLeaderboard[\s\S]*?try[\s\S]*?catch/);
+    expect(html).toMatch(/<a[^>]+href="\/dezhou\.html"[^>]*>德州扑克<\/a>/);
   });
 
   it('separates the room lobby from the active table and supports leaving and room discovery', async () => {
@@ -60,7 +65,8 @@ describe('browser client contract', () => {
     expect(html).toContain('<option value="disabled">关闭</option>');
     expect(html).toContain('data-kind="wealth"');
     expect(js).toContain('function projectSeats');
-    expect(js).toContain("confirmationText:'黄总是大帅比'");
+    expect(js).toContain("const REFILL_CONFIRMATION_TEXT = '黄总是大帅比'");
+    expect(js).toContain('body: { confirmationText }');
     expect(js).toContain("type:'chat'");
     expect(js).toContain('playCompareEffect');
     expect(js).not.toMatch(/players\.find\([^\n]+userId!==state\.user\.id/);

@@ -47,4 +47,19 @@ describe('Texas PostgreSQL schema contract', () => {
     expect(indexes).toMatch(/texas_room_players_room_seat_active_unique/i);
     expect(schema).not.toMatch(/UNIQUE\s*\(room_id,\s*seat\)/i);
   });
+
+  it('ships fail-closed post-migration assertions for production promotion', async () => {
+    const assertions = await readFile(resolve(process.cwd(), 'deploy/verify-schema.sql'), 'utf8');
+    expect(assertions).toMatch(/users_animation_mode_check/i);
+    for (const table of [
+      'texas_rooms', 'texas_room_players', 'texas_hands', 'texas_hand_players',
+      'texas_hole_cards', 'texas_actions', 'texas_pots', 'texas_wallet_ledger',
+      'texas_client_actions'
+    ]) expect(assertions).toContain(table);
+    for (const trigger of [
+      'trg_texas_rooms_updated_at', 'trg_texas_room_players_updated_at',
+      'trg_texas_actions_notify', 'trg_texas_wallet_ledger_immutable'
+    ]) expect(assertions).toContain(trigger);
+    expect(assertions).toMatch(/RAISE EXCEPTION/i);
+  });
 });

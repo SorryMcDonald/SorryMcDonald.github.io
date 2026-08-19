@@ -1,6 +1,14 @@
+import { isTransientChatEvent } from '../persistence/runtime-state.js';
+
 function serializeRoom(room) {
+  const { messages, chatLastAt, chatSeq, ...durable } = room;
   return {
-    ...room,
+    ...durable,
+    // Chat is an in-memory lifecycle concern. Filter its event-log entries too
+    // so a room snapshot cannot persist message text indirectly.
+    events:Array.isArray(room.events)
+      ? room.events.filter((event) => !isTransientChatEvent(event))
+      : [],
     players:[...room.players.entries()],
     spectators:[...room.spectators],
     pendingLedger:[],
@@ -15,11 +23,14 @@ function deserializeRoom(state) {
     ...state,
     players:new Map(Array.isArray(state.players) ? state.players : []),
     spectators:new Set(Array.isArray(state.spectators) ? state.spectators : []),
-    events:Array.isArray(state.events) ? state.events : [],
+    events:Array.isArray(state.events) ? state.events.filter((event) => !isTransientChatEvent(event)) : [],
     processedActions:Array.isArray(state.processedActions) ? state.processedActions : [],
     pendingLedger:[],
     pendingStats:[],
-    pendingClientActions:[]
+    pendingClientActions:[],
+    messages:[],
+    chatLastAt:new Map(),
+    chatSeq:0
   };
 }
 
@@ -146,7 +157,7 @@ export function createTexasPersistence({ db, service }) {
       const room=service.room(roomId);
       const ledger=[...room.pendingLedger];
       const clientActions=[...(room.pendingClientActions ?? [])];
-      const events=room.events.filter((event) => event.id > eventStart);
+      const events=room.events.filter((event) => event.id > eventStart && !isTransientChatEvent(event));
       await transaction(db, async (client) => {
         await persistRoomRow(client,room,previousVersion);
         await persistPlayerRows(client,room);
@@ -169,6 +180,11 @@ export function createTexasPersistence({ db, service }) {
       room.pendingLedger.splice(0,ledger.length);
       room.pendingClientActions?.splice(0,clientActions.length);
       return room;
+    },
+    async deleteRoom(roomId) {
+      await transaction(db, async (client) => {
+        await client.query('DELETE FROM texas_rooms WHERE id=$1', [roomId]);
+      });
     }
   };
 }

@@ -95,15 +95,20 @@ describe('production runtime persistence', () => {
     const room = service.createRoom('user-a');
     service.joinRoom(room.id, 'user-b');
     service.addMessage(room.id, 'user-a', '只保留在内存里', { now: 2000 });
+    room.events.push({ eventType: 'texas_chat_message', payload: { message: { text: '德州临时聊天' } } });
 
     const serialized = serializeRoom(room);
     expect(serialized).not.toHaveProperty('messages');
     expect(serialized).not.toHaveProperty('chatLastAt');
-    expect(serialized.events.some((event) => event.eventType === 'chat_message')).toBe(false);
-    expect(JSON.stringify(serialized)).not.toMatch(/只保留在内存里|timer|connection|disconnect/i);
+    expect(serialized.events.some((event) => ['chat_message', 'texas_chat_message'].includes(event.eventType))).toBe(false);
+    expect(JSON.stringify(serialized)).not.toMatch(/只保留在内存里|德州临时聊天|timer|connection|disconnect/i);
 
-    const restored = deserializeRoom(serialized);
+    const restored = deserializeRoom({
+      ...serialized,
+      events: [...serialized.events, { eventType: 'texas_chat_message', payload: { message: { text: '恢复时也不落盘' } } }]
+    });
     expect(restored.messages).toEqual([]);
     expect(restored.chatLastAt).toBeInstanceOf(Map);
+    expect(restored.events.some((event) => ['chat_message', 'texas_chat_message'].includes(event.eventType))).toBe(false);
   });
 });

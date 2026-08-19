@@ -16,6 +16,36 @@ function act(service, room, userId, type, amount) {
 }
 
 describe('Texas room state machine', () => {
+  it('does not retain a room when the creator cannot afford the buy-in', () => {
+    const users = new Map([['poor', { id:'poor', nickname:'穷玩家', beans:0, wins:0, losses:0 }]]);
+    const service = new TexasService({ store:{ users, banners:[] } });
+    expect(() => service.createRoom('poor', { buyIn:1000 })).toThrow(/不足/);
+    expect(service.rooms.size).toBe(0);
+  });
+
+  it('accepts player-only bounded chat and retains only the latest twenty messages', () => {
+    const { service, room } = setup(2);
+    expect(() => service.addMessage(room.id, 'spectator', '只读')).toThrow();
+    expect(service.addMessage(room.id, 'u0', '  第一条  ', { now:1000 }).text).toBe('第一条');
+    expect(() => service.addMessage(room.id, 'u0', '太快', { now:1500 })).toThrow(/频繁/);
+    expect(() => service.addMessage(room.id, 'u0', '   ', { now:2200 })).toThrow(/空/);
+    expect(() => service.addMessage(room.id, 'u0', 'x'.repeat(121), { now:3300 })).toThrow(/120/);
+    for (let index = 1; index <= 20; index += 1) service.addMessage(room.id, 'u1', `消息${index}`, { now:1000 + index * 1000 });
+    expect(room.messages).toHaveLength(20);
+    expect(room.messages[0].text).toBe('消息1');
+    expect(room.messages.at(-1).text).toBe('消息20');
+  });
+
+  it('records a turn deadline and folds the current player after the deadline context matches', () => {
+    const { service, room } = setup(2);
+    service.startHand(room.id, 'u0');
+    expect(room.turnDeadlineAt).toBeTruthy();
+    const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    const context = { roomVersion:room.version, handId:room.hand.id, currentTurn:room.currentTurn, actionSeq:actor.actionSeq };
+    service.timeoutFold(room.id, context);
+    expect(actor.folded).toBe(true);
+    expect(actor.lastAction).toBe('timeout');
+  });
   it('uses heads-up order and advances through all four betting streets', () => {
     const { service, room } = setup(2);
     service.startHand(room.id, 'u0');
@@ -101,6 +131,23 @@ describe('Texas room state machine', () => {
     }] } };
     expect(service.publicEvent(room,event,folded.userId).payload.players[0].holeCards).toHaveLength(1);
     expect(service.publicEvent(room,event,'not-in-room').payload.players[0].holeCards).toBeUndefined();
+  });
+
+  it('gives a permitted spectator the full table view without exposing it to players', () => {
+    const { service, users, room } = setup(2);
+    users.set('u2', { id:'u2', nickname:'观战者', beans:100000, wins:0, losses:0 });
+    room.allowSpectators = true;
+    service.startHand(room.id, 'u0');
+    service.setSpectating(room.id, 'u2', true);
+    service.updateSettings(room.id, 'u0', { spectatorCards:false });
+
+    const spectatorView = service.snapshot(room.id, 'u2');
+    expect(spectatorView.isSpectator).toBe(true);
+    expect(spectatorView.spectatorCards).toBe(true);
+    expect(spectatorView.players.every((player) => player.holeCards?.length === 2)).toBe(true);
+
+    const playerView = service.snapshot(room.id, 'u0');
+    expect(playerView.players.find((player) => player.userId === 'u1').holeCards).toBeUndefined();
   });
 
   it('does not reopen a closed room through an invite code', () => {
