@@ -296,8 +296,8 @@ function renderPlayer(projected) {
   if (player.userId === room.dealerUserId) seat.classList.add('dealer');
   if (player.seat === room.currentTurn) seat.classList.add('current');
   if (player.folded) seat.classList.add('folded');
-  seat.style.left = `${position.left}%`;
-  seat.style.top = `${position.top}%`;
+  seat.style.setProperty('--seat-left', `${position.left}%`);
+  seat.style.setProperty('--seat-top', `${position.top}%`);
 
   const name = document.createElement('div');
   name.className = 'player-name';
@@ -378,6 +378,7 @@ function renderRoom() {
   $('observeButton').hidden = room.hostUserId !== state.user.id;
   $('observeButton').textContent = room.allowSpectators ? '关闭观战' : '开启观战';
   $('spectateButton').hidden = !room.allowSpectators || room.isSpectator;
+  $('players').dataset.seatCount = String(room.players.length);
   $('players').replaceChildren(...projectSeats(room.players, state.user.id).map(renderPlayer));
   renderActions();
   renderMessages();

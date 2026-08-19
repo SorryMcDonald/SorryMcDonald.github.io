@@ -7,8 +7,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "vitest",
-    "test:run": "vitest run",
+    "test": "vitest --exclude e2e/**",
+    "test:run": "vitest run --exclude e2e/**",
+    "test:unit": "vitest run --exclude e2e/**",
+    "test:e2e": "playwright test",
+    "start:e2e": "node scripts/e2e-server.js",
     "dev": "node --watch src/index.js",
     "start": "node src/index.js"
   },
@@ -22,6 +25,7 @@
     "zod": "^4.1.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "vitest": "^3.2.4"
   }
 }
