@@ -194,7 +194,7 @@ end;
 $$;
 
 create or replace function public._texas_sb_next_seat(p_room uuid,p_from integer,p_actionable boolean default false)
-returns integer language sql stable security definer set search_path=public,pg_temp as $$
+returns integer language sql volatile security definer set search_path=public,pg_temp as $$
   with candidates as (
     select seat from public.texas_sb_players
     where room_id=p_room and not left_room

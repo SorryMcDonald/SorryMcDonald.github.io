@@ -2,7 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 
 const supabase=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
-const state={user:null,room:null,rooms:[],channel:null,bannerTimer:null,acting:false,lastEventId:0,renderedRoomId:null,leaderboardKind:'wins'};
+const state={user:null,room:null,rooms:[],channel:null,roomPoll:null,bannerTimer:null,acting:false,lastEventId:0,renderedRoomId:null,leaderboardKind:'wins'};
 const $=(id)=>document.getElementById(id);
 const ACTIVE=new Set(['preflop','flop','turn','river']);
 const STATUS={waiting:'等待开局',preflop:'翻牌前',flop:'翻牌',turn:'转牌',river:'河牌',showdown:'摊牌',settled:'本手已结算',closed:'已关闭'};
@@ -130,10 +130,13 @@ function renderRoomList(){const list=$('roomList');list.replaceChildren();setTex
 
 async function loadRooms(){setText('roomListStatus','正在刷新…');try{state.rooms=(await rpc('texas_sb_list_rooms'))??[];renderRoomList();}catch(error){setText('roomListStatus',readableError(error));}}
 async function refreshUser(){try{state.user=await rpc('texas_sb_me');setText('accountLabel',`${state.user.nickname} · ${money(state.user.beans)} 豆`);}catch(error){showBanner(readableError(error));}}
-async function disconnectRealtime(){const channel=state.channel;state.channel=null;if(channel)await supabase.removeChannel(channel);setText('connectionState','离线');}
+async function disconnectRealtime(){clearInterval(state.roomPoll);state.roomPoll=null;const channel=state.channel;state.channel=null;if(channel)await supabase.removeChannel(channel);setText('connectionState','离线');}
 async function connectRealtime(){
   if(!state.room)return;await disconnectRealtime();const roomId=state.room.id;
   state.channel=supabase.channel(`texas-room-${roomId}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'texas_sb_rooms',filter:`id=eq.${roomId}`},(payload)=>{if(state.room?.id===roomId&&Number(payload.new?.version)>Number(state.room.version))loadRoom();}).subscribe((status)=>setText('connectionState',status==='SUBSCRIBED'?'已连接':status==='CHANNEL_ERROR'||status==='TIMED_OUT'?'连接异常':'连接中'));
+  // Realtime can occasionally miss a database notification. Poll only the active
+  // room as a recovery path; the public room directory remains manual refresh.
+  state.roomPoll=setInterval(()=>{if(state.room?.id===roomId&&!document.hidden)loadRoom();},2000);
 }
 async function loadRoom(){if(!state.room)return;const id=state.room.id;try{const room=await rpc('texas_sb_snapshot',{p_room:id});if(state.room?.id!==id||Number(room.version)<Number(state.room.version))return;state.room=room;renderRoom();await refreshUser();}catch(error){showBanner(readableError(error));}}
 function showBanner(message){if(!message)return;clearTimeout(state.bannerTimer);setText('globalTicker',message);state.bannerTimer=setTimeout(()=>setText('globalTicker',''),4500);}

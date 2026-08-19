@@ -31,6 +31,7 @@ describe('Texas Supabase SQL contract',() => {
     expect(sql).toContain('(v_level-v_prev)*count(*)');
     expect(sql).toContain("p_type='all_in'");
     expect(sql).toContain('p_expected_version<>r.version');
+    expect(sql).toContain('returns integer language sql volatile security definer');
   });
 
   it('automatically restores an exhausted balance and records leaderboard resets',async() => {

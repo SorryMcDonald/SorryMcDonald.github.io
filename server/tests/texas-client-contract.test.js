@@ -9,7 +9,7 @@ describe('Texas browser client contract',() => {
     expect(js).toContain("supabase.rpc(name,args)");
     expect(js).toContain("table:'texas_sb_rooms'");
     expect(js).toContain('signInAnonymously');
-    expect(js).not.toMatch(/fetch\(|new WebSocket|setInterval\(/);
+    expect(js).not.toMatch(/fetch\(|new WebSocket/);
     expect(js).toContain('room.allowedActions');
     expect(js).toContain("$('refreshButton').addEventListener('click',loadRooms)");
   });
@@ -24,6 +24,8 @@ describe('Texas browser client contract',() => {
     expect(js).toContain("sessionStorage.setItem('texas.roomId'");
     expect(js).toContain('function seatPosition');
     expect(js).toContain('function playRoomEvents');
+    expect(js).toContain("state.roomPoll=setInterval");
+    expect(js).not.toMatch(/setInterval\([^\n]*loadRooms/);
     expect(js).toContain("event.eventType==='texas_hand_settled'");
     expect(html).toContain('id="potChipStack"');
     for (const className of ['seat-enter','table-bet','mini-chip-stack','pot-chip-stack','chip-flight','round-winner','round-loser','settlement-burst']) expect(css).toContain(className);
