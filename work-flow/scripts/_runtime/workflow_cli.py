@@ -87,7 +87,7 @@ def build_parser():
     _add_json(doctor)
 
     state = sub.add_parser("state")
-    state.add_argument("action", choices=("read", "add", "list", "next-action", "transition"))
+    state.add_argument("action", choices=("read", "add", "list", "next-action", "transition", "migrate-workspace"))
     state.add_argument("--root", required=True)
     state.add_argument("--task-id")
     state.add_argument("--title")

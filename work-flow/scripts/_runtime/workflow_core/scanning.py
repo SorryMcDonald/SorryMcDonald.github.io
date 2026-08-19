@@ -55,6 +55,8 @@ def _walk_files(root):
 
     def visit(directory):
         for entry in sorted(os.scandir(directory), key=lambda item: item.name.casefold()):
+            if entry.name in EXCLUDED_DIRS:
+                continue
             path = Path(entry.path)
             rel = path.relative_to(root)
             try:
@@ -68,8 +70,7 @@ def _walk_files(root):
             if entry.is_symlink() or is_reparse:
                 raise ValueError(f"symlink/reparse point is not allowed during scan: {path}")
             if entry.is_dir(follow_symlinks=False):
-                if entry.name not in EXCLUDED_DIRS:
-                    visit(path)
+                visit(path)
                 continue
             if entry.is_file(follow_symlinks=False) and not any(part in EXCLUDED_DIRS for part in rel.parts):
                 files.append(path)

@@ -1,3 +1,5 @@
+import re
+
 from .schema import pretty_json
 
 
@@ -32,13 +34,13 @@ ROLE_ROUTES = {
 }
 
 UNSUPPORTED_EFFORT_MARKERS = ("unsupported reasoning effort", "unsupported effort", "effort is not supported", "model does not support effort", "invalid reasoning effort", "unknown variant.*ultra", "unknown variant.*max")
-BLOCKING_ERROR_MARKERS = ("authentication", "unauthorized", "account_deactivated", "token_invalidated", "rate limit", "429", "401", "403", "408", "500", "502", "503", "504", "quota", "timeout", "network", "connection reset", "provider", "model not found", "model_not_found", "unknown model", "does not exist", "permission denied")
+BLOCKING_ERROR_MARKERS = ("authentication", "unauthorized", "account_deactivated", "token_invalidated", "rate limit", "quota", "timeout", "network", "connection reset", "provider", "model not found", "model_not_found", "unknown model", "does not exist", "permission denied")
+BLOCKING_STATUS_PATTERN = re.compile(r"\b(?:401|403|408|429|5(?:00|02|03|04))\b")
 
 
 def classify_worker_error(message):
     text = str(message).lower()
-    import re
-    if any(marker in text for marker in BLOCKING_ERROR_MARKERS):
+    if any(marker in text for marker in BLOCKING_ERROR_MARKERS) or BLOCKING_STATUS_PATTERN.search(text):
         return "blocked_external"
     if any(re.search(marker, text) for marker in UNSUPPORTED_EFFORT_MARKERS):
         return "unsupported_effort"

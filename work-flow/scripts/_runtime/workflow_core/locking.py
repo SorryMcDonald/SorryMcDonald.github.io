@@ -317,11 +317,16 @@ def _release_owned_guard(path, guard_id):
     try:
         _, current = _read_guard(path)
     except FileNotFoundError:
-        return
-    except OSError:
-        return
-    if current.get("guard_id") == guard_id:
+        return True
+    except (OSError, ValueError):
+        return False
+    if current.get("guard_id") != guard_id:
+        return False
+    try:
         path.unlink(missing_ok=True)
+    except OSError:
+        return False
+    return True
 
 
 def _write_lock(root, data, expected_revision):
@@ -357,22 +362,43 @@ def _lock_command_with_mutex(args):
         "operation_id": getattr(args, "operation_id", None),
         "acquired_at": _now(),
     }
+    created = False
     try:
         fd = os.open(str(guard), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        created = True
         payload = (json.dumps(guard_record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
-        os.write(fd, payload)
-        os.fsync(fd)
-        os.close(fd)
+        try:
+            os.write(fd, payload)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     except FileExistsError:
         try:
             _, current = _read_guard(guard)
         except OSError:
             current = None
         return 4, {"error": "lock_mutation_busy", "guard": current}
+    except OSError as exc:
+        if created:
+            guard.unlink(missing_ok=True)
+        return 4, {"error": "guard_write_failed", "message": str(exc)}
     try:
-        return _lock_command_unguarded(args)
-    finally:
+        result = _lock_command_unguarded(args)
+    except BaseException:
         _release_owned_guard(guard, guard_id)
+        raise
+    if _release_owned_guard(guard, guard_id):
+        return result
+    code, payload = result
+    if code == 0:
+        return 6, {
+            "error": "guard_cleanup_failed",
+            "status": "mutation_committed",
+            "result": payload,
+        }
+    payload = dict(payload) if isinstance(payload, dict) else {"result": payload}
+    payload["guard_cleanup"] = "failed"
+    return code, payload
 
 
 def _lock_command_unguarded(args):

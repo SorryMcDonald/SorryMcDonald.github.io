@@ -56,9 +56,17 @@
         "to": "implementing"
       },
       "name": "task.transition"
+    },
+    {
+      "at": "2026-08-19T07:34:37Z",
+      "detail": {
+        "from": "ws-b99f6bf3046785f7bbfef1d5",
+        "to": "ws-fd23a02ea0f2db963627743a"
+      },
+      "name": "workspace.migrate"
     }
   ],
-  "revision": 6,
+  "revision": 7,
   "runtime_version": "1.2.0",
   "schema_version": 1,
   "status": "initialized",
@@ -135,7 +143,7 @@
     }
   },
   "template_version": "1.0.0",
-  "workspace_id": "ws-b99f6bf3046785f7bbfef1d5"
+  "workspace_id": "ws-fd23a02ea0f2db963627743a"
 }
 ---end-workflow-state-json---
 

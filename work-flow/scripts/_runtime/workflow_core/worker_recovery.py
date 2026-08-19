@@ -20,6 +20,20 @@ def remove_path(path):
         shutil.rmtree(path)
 
 
+def is_allowed_parent_directory(root, relative, allowed):
+    path = Path(relative).as_posix().rstrip("/")
+    normalized = [Path(item).as_posix().rstrip("/") for item in allowed]
+    if not any(item.startswith(path + "/") for item in normalized):
+        return False
+    candidate = Path(root) / relative
+    is_junction = getattr(candidate, "is_junction", None)
+    return (
+        candidate.is_dir()
+        and not candidate.is_symlink()
+        and not (callable(is_junction) and is_junction())
+    )
+
+
 def restore_record(path, record):
     kind = record.get("kind")
     if kind == "directory":
@@ -46,7 +60,14 @@ def restore_record(path, record):
 
 
 def restore_unauthorized(root, before, changed, allowed):
-    unauthorized = [rel for rel in changed if is_protected(rel) or not allowed_changed([rel], allowed)]
+    unauthorized = [
+        rel for rel in changed
+        if is_protected(rel)
+        or (
+            not allowed_changed([rel], allowed)
+            and not is_allowed_parent_directory(root, rel, allowed)
+        )
+    ]
     restorable = [rel for rel in unauthorized if rel != LOCK_RELATIVE_PATH]
     for rel in sorted(restorable, key=lambda item: len(Path(item).parts), reverse=True):
         remove_path(Path(root) / rel)

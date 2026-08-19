@@ -163,7 +163,7 @@ def build_upgrade_plan(root, assets_root, runtime_root, cli_path):
             "target_inputs": {
                 rel: sha256_bytes((root / rel).read_bytes())
                 for rel in ("AGENTS.md", "work-flow/project_rules.md", "work-flow/config.json", "work-flow/state.md")
-                if (root / rel).exists()
+                if (root / rel).is_file()
             },
         },
         "actions": actions,
