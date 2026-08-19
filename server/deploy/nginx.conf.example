@@ -1,0 +1,10 @@
+server {
+    listen 443 ssl http2;
+    server_name poker.example.com;
+    ssl_certificate /etc/letsencrypt/live/poker.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/poker.example.com/privkey.pem;
+
+    location /api/ { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto https; }
+    location /ws { proxy_pass http://127.0.0.1:3000; proxy_http_version 1.1; proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade"; }
+    location / { proxy_pass http://127.0.0.1:3000; proxy_set_header Host $host; }
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Zhajinhua HTTP API
+After=network.target postgresql.service
+
+[Service]
+User=zhajinhua
+WorkingDirectory=/opt/zhajinhua/server
+EnvironmentFile=/etc/zhajinhua/api.env
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/zhajinhua
+
+[Install]
+WantedBy=multi-user.target

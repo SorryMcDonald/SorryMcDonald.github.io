@@ -87,6 +87,98 @@ create trigger trg_zhajinhua_room_limit
 before insert or update of room_id, left_room on public.players
 for each row execute function public.enforce_zhajinhua_room_limit();
 
+-- 原子开始一局：锁定房间并在同一事务中校验玩家、扣底注、写入手牌和切换状态。
+create or replace function public.prepare_zhajinhua_round(
+  p_room_id uuid,
+  p_players jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  v_room rooms%rowtype;
+  v_entry jsonb;
+  v_player players%rowtype;
+  v_ids uuid[];
+  v_count integer;
+  v_ante integer;
+  v_pot integer := 0;
+  v_turn integer := null;
+  v_round integer;
+begin
+  if jsonb_typeof(p_players) <> 'array' then
+    raise exception 'INVALID_PLAYERS';
+  end if;
+
+  select * into v_room from rooms where id=p_room_id for update;
+  if not found then raise exception 'ROOM_NOT_FOUND'; end if;
+  if v_room.status not in ('waiting','finished') then
+    raise exception 'ROOM_NOT_READY';
+  end if;
+  if not exists (
+    select 1 from players
+    where room_id=p_room_id and user_id=auth.uid() and is_host and not left_room
+  ) then
+    raise exception 'NOT_ROOM_HOST';
+  end if;
+
+  select count(*) into v_count from jsonb_array_elements(p_players);
+  if v_count < 2 or v_count > 8 then raise exception 'INVALID_PLAYER_COUNT'; end if;
+  v_ids := array(select (value->>'id')::uuid from jsonb_array_elements(p_players));
+  if cardinality(v_ids) <> v_count
+     or exists(select 1 from unnest(v_ids) as ids(id) group by id having count(*) > 1) then
+    raise exception 'DUPLICATE_PLAYER';
+  end if;
+
+  -- 先锁定并完整校验所有玩家，任何人刚退出都会让整笔事务回滚。
+  for v_entry in select value from jsonb_array_elements(p_players) loop
+    if jsonb_typeof(v_entry->'hand') <> 'array' or jsonb_array_length(v_entry->'hand') <> 3 then
+      raise exception 'INVALID_HAND';
+    end if;
+    select * into v_player from players
+      where id=(v_entry->>'id')::uuid and room_id=p_room_id
+      for update;
+    if not found or v_player.left_room or v_player.chips <= 0 then
+      raise exception 'PLAYER_CHANGED';
+    end if;
+    if v_turn is null or v_player.seat < v_turn then v_turn := v_player.seat; end if;
+  end loop;
+
+  update players set
+    in_round=false, all_in=false, last_action='', action_seq=0,
+    folded=false, seen=false, bet=0, total=0, compare_with=-1
+  where room_id=p_room_id;
+  update hands set hand=null where room_id=p_room_id;
+
+  for v_entry in select value from jsonb_array_elements(p_players) loop
+    select * into v_player from players where id=(v_entry->>'id')::uuid for update;
+    v_ante := least(10, v_player.chips);
+    v_pot := v_pot + v_ante;
+    update players set
+      chips=v_player.chips-v_ante, bet=0, total=v_ante,
+      seen=false, folded=false, compare_with=-1, in_round=true,
+      all_in=(v_player.chips-v_ante=0), last_action='', action_seq=0
+    where id=v_player.id;
+    insert into hands(player_id,user_id,room_id,hand)
+    values(v_player.id,v_player.user_id,p_room_id,v_entry->'hand')
+    on conflict(player_id) do update set
+      user_id=excluded.user_id, room_id=excluded.room_id, hand=excluded.hand;
+  end loop;
+
+  v_round := coalesce(v_room.round,0)+1;
+  update rooms set
+    status='playing', current_turn=v_turn, level=1, pot=v_pot,
+    round=v_round, message=''
+  where id=p_room_id;
+  return jsonb_build_object('status','playing','current_turn',v_turn,'level',1,
+                            'pot',v_pot,'round',v_round);
+end;
+$$;
+revoke all on function public.prepare_zhajinhua_round(uuid,jsonb) from public;
+grant execute on function public.prepare_zhajinhua_round(uuid,jsonb) to anon, authenticated;
+
 -- ---------- 手牌表（RLS 保护隐私） ----------
 create table if not exists public.hands (
   player_id uuid primary key references public.players(id) on delete cascade,

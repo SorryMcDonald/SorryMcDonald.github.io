@@ -1,0 +1,16 @@
+[Unit]
+Description=Zhajinhua game worker
+After=network.target postgresql.service
+
+[Service]
+User=zhajinhua
+WorkingDirectory=/opt/zhajinhua/server
+EnvironmentFile=/etc/zhajinhua/worker.env
+ExecStart=/usr/bin/node src/worker-entry.js
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

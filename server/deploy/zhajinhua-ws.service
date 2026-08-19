@@ -1,0 +1,16 @@
+[Unit]
+Description=Zhajinhua WebSocket gateway
+After=network.target postgresql.service
+
+[Service]
+User=zhajinhua
+WorkingDirectory=/opt/zhajinhua/server
+EnvironmentFile=/etc/zhajinhua/ws.env
+ExecStart=/usr/bin/node src/ws-entry.js
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
