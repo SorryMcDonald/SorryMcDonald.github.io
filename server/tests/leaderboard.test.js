@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rankUsers, titleFor } from '../src/leaderboard/routes.js';
+import { rankUsers, resolveUserTitles, titleFor } from '../src/leaderboard/routes.js';
 import { buildApp } from '../src/index.js';
 
 describe('leaderboards and refill', () => {
@@ -9,6 +9,31 @@ describe('leaderboards and refill', () => {
     expect(entries[0].title).toBe('赌神');
     expect(titleFor('losses', 1)).toBe('散财童子');
     expect(titleFor('wins', 5)).toBe('赌鬼');
+  });
+
+  it('ranks every account by wealth and shares wealth titles across tied extrema', () => {
+    const users = [
+      { id: 'c', nickname: '丙', wins: 0, losses: 0, beans: 10 },
+      { id: 'b', nickname: '乙', wins: 1, losses: 4, beans: 90 },
+      { id: 'a', nickname: '甲', wins: 4, losses: 1, beans: 90 },
+      { id: 'd', nickname: '丁', wins: 2, losses: 2, beans: 10 },
+    ];
+
+    expect(rankUsers(users, 'wealth').map((entry) => entry.id)).toEqual(['a', 'b', 'c', 'd']);
+    const titles = resolveUserTitles(users);
+    expect(titles.get('a')).toEqual(expect.arrayContaining(['大富翁', '赌神']));
+    expect(titles.get('b')).toEqual(expect.arrayContaining(['大富翁', '散财童子']));
+    expect(titles.get('c')).toContain('穷乞丐');
+    expect(titles.get('d')).toContain('穷乞丐');
+  });
+
+  it('does not assign wealth titles when every balance is equal', () => {
+    const titles = resolveUserTitles([
+      { id: 'a', nickname: '甲', wins: 0, losses: 0, beans: 100 },
+      { id: 'b', nickname: '乙', wins: 0, losses: 0, beans: 100 },
+    ]);
+    expect(titles.get('a')).toEqual([]);
+    expect(titles.get('b')).toEqual([]);
   });
 
   it('allows exactly one refill per zero-balance generation and sends separate banners', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import * as rules from '../src/game/rules.js';
 import { buildCompareEvents, calculateSidePotPayouts, compareHands, evaluateHand, netChange, selectDealer, shouldSettle } from '../src/game/rules.js';
 
 const c = (rank, suit = 'S') => ({ rank, suit });
@@ -38,5 +39,21 @@ describe('炸金花 rules', () => {
       { type: 'compare_started', attacker: '甲', target: '乙', fee: 20 },
       { type: 'compare_resolved', winner: '甲', loser: '乙' },
     ]);
+  });
+
+  it('charges seen players twice the base action cost', () => {
+    expect(rules.actionCost({ level: 20, seen: false, action: 'call' })).toBe(20);
+    expect(rules.actionCost({ level: 20, seen: true, action: 'call' })).toBe(40);
+    expect(rules.actionCost({ level: 20, seen: false, action: 'compare' })).toBe(40);
+    expect(rules.actionCost({ level: 20, seen: true, action: 'compare' })).toBe(80);
+  });
+
+  it('accepts only safe integer raises above the current base level', () => {
+    expect(rules.validateRaise({ amount: 50, level: 20, balance: 100, seen: false })).toEqual({ base: 50, charge: 50 });
+    expect(rules.validateRaise({ amount: 50, level: 20, balance: 100, seen: true })).toEqual({ base: 50, charge: 100 });
+    expect(() => rules.validateRaise({ amount: 20, level: 20, balance: 100, seen: false })).toThrow(/高于/);
+    expect(() => rules.validateRaise({ amount: 20.5, level: 20, balance: 100, seen: false })).toThrow(/整数/);
+    expect(() => rules.validateRaise({ amount: Number.POSITIVE_INFINITY, level: 20, balance: 100, seen: false })).toThrow(/整数/);
+    expect(() => rules.validateRaise({ amount: 60, level: 20, balance: 100, seen: true })).toThrow(/不足/);
   });
 });

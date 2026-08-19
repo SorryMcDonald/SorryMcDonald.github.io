@@ -1,5 +1,38 @@
 const HAND_NAMES = ['','单张','对子','顺子','金花','顺金','豹子'];
 
+function positiveSafeInteger(value, label) {
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw Object.assign(new Error(`${label}必须是正整数`), { statusCode: 400 });
+  }
+  return amount;
+}
+
+export function actionCost({ level, seen = false, action = 'call' } = {}) {
+  const base = positiveSafeInteger(level, '下注档位');
+  const charge = base * (action === 'compare' ? 2 : 1) * (seen ? 2 : 1);
+  if (!Number.isSafeInteger(charge)) {
+    throw Object.assign(new Error('下注金额超出安全范围'), { statusCode: 400 });
+  }
+  return charge;
+}
+
+export function validateRaise({ amount, level, balance, seen = false } = {}) {
+  const base = positiveSafeInteger(amount, '加注金额');
+  const current = positiveSafeInteger(level, '当前档位');
+  if (base <= current) {
+    throw Object.assign(new Error('加注档位必须高于当前档位'), { statusCode: 400 });
+  }
+  const charge = base * (seen ? 2 : 1);
+  if (!Number.isSafeInteger(charge)) {
+    throw Object.assign(new Error('下注金额超出安全范围'), { statusCode: 400 });
+  }
+  if (charge > Number(balance ?? 0)) {
+    throw Object.assign(new Error('下注豆子不足'), { statusCode: 400 });
+  }
+  return { base, charge };
+}
+
 export function evaluateHand(cards = []) {
   if (!Array.isArray(cards) || cards.length !== 3) throw new Error('炸金花需要三张牌');
   const ranks = cards.map((card) => Number(card.rank)).sort((a, b) => a - b);
