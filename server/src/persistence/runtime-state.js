@@ -28,10 +28,12 @@ export async function hydrateStore(db) {
 }
 
 export function serializeRoom(room) {
+  const { messages, chatLastAt, ...durable } = room;
   return {
-    ...room,
+    ...durable,
     players: [...room.players.entries()],
-    spectators: [...room.spectators]
+    spectators: [...room.spectators],
+    events: (room.events ?? []).filter((event) => event.eventType !== 'chat_message')
   };
 }
 
@@ -41,7 +43,9 @@ export function deserializeRoom(state) {
     ...state,
     players: new Map(Array.isArray(state.players) ? state.players : []),
     spectators: new Set(Array.isArray(state.spectators) ? state.spectators : []),
-    events: Array.isArray(state.events) ? state.events : []
+    events: Array.isArray(state.events) ? state.events.filter((event) => event.eventType !== 'chat_message') : [],
+    messages: [],
+    chatLastAt: new Map()
   };
 }
 

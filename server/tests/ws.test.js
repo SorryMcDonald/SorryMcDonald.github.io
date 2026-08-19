@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { WebSocketGateway } from '../src/ws/gateway.js';
 import { buildApp } from '../src/index.js';
+import { visibleRoom } from '../src/game/events.js';
+import { RoomService } from '../src/rooms/service.js';
 
 function socket() { return { readyState: 1, sent: [], send(value) { this.sent.push(JSON.parse(value)); }, on() {} }; }
 
@@ -24,6 +26,28 @@ describe('WebSocket visibility', () => {
     expect(player.sent[0].event.payload).not.toHaveProperty('cards'); expect(player.sent[0].event.payload).not.toHaveProperty('typeName');
     gateway.broadcastRoom('room', { eventType: 'round_settled', payload: { cards: [{ rank: 2 }], typeName: '对子' } });
     expect(observer.sent[1].event.payload.cards).toHaveLength(1); expect(observer.sent[1].event.payload.typeName).toBe('对子');
+  });
+
+  it('keeps an unseen owner hidden while spectators receive every live hand', () => {
+    const store = {
+      users: new Map([
+        ['owner', { id: 'owner', nickname: '牌手甲', beans: 100000, wins: 0, losses: 0 }],
+        ['other', { id: 'other', nickname: '牌手乙', beans: 100000, wins: 0, losses: 0 }],
+        ['observer', { id: 'observer', nickname: '观战者', beans: 100000, wins: 0, losses: 0 }]
+      ]),
+      sessions: new Map(),
+      banners: []
+    };
+    const service = new RoomService({ store });
+    const room = service.createRoom('owner', { allowSpectators: true });
+    service.joinRoom(room.id, 'other');
+    service.startNextRound(room.id, 'owner');
+    room.spectators.add('observer');
+
+    const ownerView = visibleRoom(room, { userId: 'owner' });
+    expect(ownerView.players.find((player) => player.userId === 'owner')).not.toHaveProperty('cards');
+    const observerView = visibleRoom(room, { userId: 'observer', spectator: true });
+    expect(observerView.players.every((player) => player.cards.length === 3)).toBe(true);
   });
 
   it('broadcasts room events without sending a zero-balance banner before manual refill', async () => {

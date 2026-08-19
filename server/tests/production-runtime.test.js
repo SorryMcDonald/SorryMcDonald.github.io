@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { createProductionRuntime } from '../src/runtime.js';
+import { deserializeRoom, serializeRoom } from '../src/persistence/runtime-state.js';
+import { RoomService } from '../src/rooms/service.js';
 
 async function register(app, email, nickname) {
   const response = await app.inject({
@@ -78,5 +80,30 @@ describe('production runtime persistence', () => {
     expect(deleted).toEqual([room.id]);
     expect(app.lifecycle.turnTimers.has(room.id)).toBe(false);
     await app.close();
+  });
+
+  it('persists only durable room state and restores chat as empty memory state', () => {
+    const store = {
+      users: new Map([
+        ['user-a', { id: 'user-a', nickname: '甲', beans: 100000, wins: 0, losses: 0 }],
+        ['user-b', { id: 'user-b', nickname: '乙', beans: 100000, wins: 0, losses: 0 }]
+      ]),
+      sessions: new Map(),
+      banners: []
+    };
+    const service = new RoomService({ store });
+    const room = service.createRoom('user-a');
+    service.joinRoom(room.id, 'user-b');
+    service.addMessage(room.id, 'user-a', '只保留在内存里', { now: 2000 });
+
+    const serialized = serializeRoom(room);
+    expect(serialized).not.toHaveProperty('messages');
+    expect(serialized).not.toHaveProperty('chatLastAt');
+    expect(serialized.events.some((event) => event.eventType === 'chat_message')).toBe(false);
+    expect(JSON.stringify(serialized)).not.toMatch(/只保留在内存里|timer|connection|disconnect/i);
+
+    const restored = deserializeRoom(serialized);
+    expect(restored.messages).toEqual([]);
+    expect(restored.chatLastAt).toBeInstanceOf(Map);
   });
 });
