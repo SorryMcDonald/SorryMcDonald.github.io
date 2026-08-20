@@ -1,7 +1,7 @@
 import { eventEffects, initialEventCursor } from './dezhou-effects.js';
 
 const state = {
-  user:null, room:null, rooms:[], ws:null, poll:null, countdown:null, bannerTimer:null,
+  user:null, room:null, rooms:[], ws:null, poll:null, countdown:null, bannerTimer:null, bannerQueue:[], seenBanners:new Set(),
   authMode:'login', acting:false, lastEventId:0, eventCursorReady:false,
   leaderboardKind:'wealth', musicEnabled:true, effectsEnabled:true, motionMode:'light'
 };
@@ -10,6 +10,7 @@ const ACTIVE = new Set(['preflop','flop','turn','river']);
 const STATUS = { waiting:'等待开局', preflop:'翻牌前', flop:'翻牌', turn:'转牌', river:'河牌', settled:'本手已结算', closed:'已关闭' };
 const RANK = { 2:'2', 3:'3', 4:'4', 5:'5', 6:'6', 7:'7', 8:'8', 9:'9', 10:'10', 11:'J', 12:'Q', 13:'K', 14:'A' };
 const SUIT = { S:'♠', H:'♥', C:'♣', D:'♦' };
+const REFILL_REWARDS = new Map([['黄总大帅逼',1_000],['我是菜逼',10_000]]);
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -388,7 +389,7 @@ function connectWs() {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const roomId = state.room.id;
   const socket = new WebSocket(`${protocol}://${location.host}/ws?game=texas&roomId=${encodeURIComponent(roomId)}`); socket.__roomId = roomId; state.ws = socket;
   socket.onopen = () => socket.send(JSON.stringify({ type:'sync', after:state.lastEventId }));
-  socket.onmessage = (message) => { try { const data = JSON.parse(message.data); if (data.type === 'room_event' && data.game === 'texas') { const payload = data.event?.payload ?? {}; if (data.event?.eventType === 'tournament_player_moved' && payload.userId === state.user?.id && payload.toRoomId) { sessionStorage.setItem('texas.roomId',payload.toRoomId); disconnectWs(); state.room = { id:payload.toRoomId,version:-1 }; loadRoom().then(connectWs).catch(() => { location.href='/tournament.html'; }); } else loadRoom().catch(() => {}); } if (data.type === 'global_banner') showBanner(data.banner?.message); } catch {} };
+  socket.onmessage = (message) => { try { const data = JSON.parse(message.data); if (data.type === 'room_event' && data.game === 'texas') { const payload = data.event?.payload ?? {}; if (data.event?.eventType === 'tournament_player_moved' && payload.userId === state.user?.id && payload.toRoomId) { sessionStorage.setItem('texas.roomId',payload.toRoomId); disconnectWs(); state.room = { id:payload.toRoomId,version:-1 }; loadRoom().then(connectWs).catch(() => { location.href='/tournament.html'; }); } else loadRoom().catch(() => {}); } if (data.type === 'global_banner') renderGlobalBanner(data); } catch {} };
   socket.onclose = () => { if (state.ws === socket) state.ws = null; if (!socket.__manual && state.room?.id === roomId) window.setTimeout(connectWs,1500); };
 }
 
@@ -399,11 +400,24 @@ async function loadRoom() {
 }
 
 function startPolling() { clearInterval(state.poll); state.poll = setInterval(() => state.room ? loadRoom() : loadRooms(),3000); }
-function showBanner(message) { if (!message) return; clearTimeout(state.bannerTimer); text('globalTicker',message); state.bannerTimer = setTimeout(() => text('globalTicker',''),4500); }
+function showNextBanner() {
+  const message = state.bannerQueue.shift();
+  if (!message) { state.bannerTimer = null; text('globalTicker',''); return; }
+  text('globalTicker',message);
+  state.bannerTimer = setTimeout(() => { state.bannerTimer = null; showNextBanner(); },4500);
+}
+function showBanner(message) { if (!message) return; state.bannerQueue.push(message); if (!state.bannerTimer) showNextBanner(); }
+function renderGlobalBanner(data) {
+  if (data?.type !== 'global_banner' || !data.banner?.message) return;
+  const key = String(data.banner.id ?? `${data.banner.queueName || 'global'}:${data.banner.message}:${data.banner.createdAt || ''}`);
+  if (state.seenBanners.has(key)) return;
+  state.seenBanners.add(key);
+  showBanner(data.banner.message);
+}
 
 function openJoin(room = {}) {
   $('joinRoomId').value = room.id ?? ''; $('joinCodeInput').value = room.code ?? ''; $('joinBuyInInput').min = String(room.minBuyIn ?? 1); $('joinBuyInInput').max = String(room.maxBuyIn ?? 100000);
-  $('joinBuyInInput').value = String(Math.min(1000,room.maxBuyIn ?? 1000)); $('joinDialog').showModal();
+  $('joinBuyInInput').value = String(Math.min(room.maxBuyIn ?? 10000,Math.max(room.minBuyIn ?? 1,10000))); $('joinDialog').showModal();
 }
 
 async function spectateRoom(roomId) { try { const data = await api(`/api/texas/rooms/${roomId}/spectate`,{ method:'POST', body:{ enabled:true } }); applyRoomSnapshot(data.room,{ baseline:true }); connectWs(); } catch (error) { showBanner(error.message); } }
@@ -519,7 +533,7 @@ $('rebuyForm').addEventListener('submit',async(event) => { event.preventDefault(
 $('refillButton').addEventListener('click',() => $('refillDialog').showModal());
 $('refillForm').addEventListener('submit',async(event) => {
   event.preventDefault(); text('refillError','');
-  try { const confirmationText = $('refillConfirmation').value.trim(); if (confirmationText !== '黄总是大帅比') throw new Error('请输入“黄总是大帅比”'); const data = await api('/api/me/refill',{ method:'POST', body:{ confirmationText } }); $('refillDialog').close(); $('refillConfirmation').value = ''; await refreshUser(); data.banners?.forEach((banner) => showBanner(banner.message)); }
+  try { const confirmationText = $('refillConfirmation').value.trim(); if (!REFILL_REWARDS.has(confirmationText)) throw new Error('确认文字不正确'); const data = await api('/api/me/refill',{ method:'POST', body:{ confirmationText } }); $('refillDialog').close(); $('refillConfirmation').value = ''; await refreshUser(); data.banners?.forEach((banner) => renderGlobalBanner({ type:'global_banner', banner })); }
   catch (error) { text('refillError',error.message); }
 });
 $('roomSettingsButton').addEventListener('click',() => { $('roomAllowSpectators').checked = state.room.allowSpectators; $('roomSettingsDialog').showModal(); });

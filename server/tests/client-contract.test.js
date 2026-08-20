@@ -65,8 +65,10 @@ describe('browser client contract', () => {
     expect(html).toContain('<option value="disabled">关闭</option>');
     expect(html).toContain('data-kind="wealth"');
     expect(js).toContain('function projectSeats');
-    expect(js).toContain("const REFILL_CONFIRMATION_TEXT = '黄总是大帅比'");
+    expect(js).toContain("['黄总大帅逼', 1_000]");
+    expect(js).toContain("['我是菜逼', 10_000]");
     expect(js).toContain('body: { confirmationText }');
+    expect(js).toContain("renderGlobalBanner({ type: 'global_banner', banner })");
     expect(js).toContain("type:'chat'");
     expect(js).toContain('playCompareEffect');
     expect(js).not.toMatch(/players\.find\([^\n]+userId!==state\.user\.id/);

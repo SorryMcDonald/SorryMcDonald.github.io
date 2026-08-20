@@ -16,10 +16,30 @@ function act(service, room, userId, type, amount) {
 }
 
 describe('Texas room state machine', () => {
+  it('uses 100/200 blinds, a 10,000 default buy-in and a fixed 100 raise increment', () => {
+    const users = new Map([
+      ['u0', { id:'u0', nickname:'甲', beans:100000, wins:0, losses:0 }],
+      ['u1', { id:'u1', nickname:'乙', beans:100000, wins:0, losses:0 }]
+    ]);
+    const service = new TexasService({ store:{ users, banners:[] } });
+    const room = service.createRoom('u0');
+    service.joinRoom(room.id, 'u1');
+
+    expect(room).toMatchObject({ smallBlind:100, bigBlind:200, minBuyIn:4000, maxBuyIn:20000, minRaise:100 });
+    expect([...room.players.values()].map((player) => player.stack)).toEqual([10000,10000]);
+    service.startHand(room.id, 'u0');
+    const first = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    expect(service.snapshot(room.id, first.userId).allowedActions.minRaiseTo).toBe(300);
+    act(service, room, first.userId, 'raise', 300);
+    const second = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    expect(room.minRaise).toBe(100);
+    expect(service.snapshot(room.id, second.userId).allowedActions.minRaiseTo).toBe(400);
+  });
+
   it('does not retain a room when the creator cannot afford the buy-in', () => {
     const users = new Map([['poor', { id:'poor', nickname:'穷玩家', beans:0, wins:0, losses:0 }]]);
     const service = new TexasService({ store:{ users, banners:[] } });
-    expect(() => service.createRoom('poor', { buyIn:1000 })).toThrow(/不足/);
+    expect(() => service.createRoom('poor', { buyIn:10000 })).toThrow(/不足/);
     expect(service.rooms.size).toBe(0);
   });
 

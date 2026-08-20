@@ -49,7 +49,7 @@ describe('production runtime persistence', () => {
     expect(runtime.store.users.size).toBe(2);
     const room = runtime.roomService.createRoom('00000000-0000-4000-8000-000000000001');
     runtime.store.users.get('00000000-0000-4000-8000-000000000001').beans = 77777;
-    runtime.store.banners.push({ id: 1, queueName: 'economy', message: '甲：黄总是大帅比！', createdAt: new Date().toISOString() });
+    runtime.store.banners.push({ id: 1, queueName: 'economy', message: '甲：黄总大帅逼！', createdAt: new Date().toISOString() });
 
     await runtime.persistence.flushRoom(room.id, 0);
 

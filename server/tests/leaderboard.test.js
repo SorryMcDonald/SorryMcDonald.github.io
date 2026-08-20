@@ -70,15 +70,20 @@ describe('leaderboards and refill', () => {
     expect(user.beans).toBe(0);
     expect(app.auth.store.banners).toHaveLength(0);
 
-    const first = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie }, payload: { confirmationText: '黄总是大帅比' } });
+    const first = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie }, payload: { confirmationText: '黄总大帅逼' } });
     expect(first.statusCode).toBe(200);
     expect(first.json().events.slice(0, 2).map((event) => event.type)).toEqual(['fixed_banner', 'refill']);
-    expect(app.auth.store.banners[0].message).toBe('归零：黄总是大帅比！');
+    expect(app.auth.store.banners[0]).toMatchObject({ message: '归零：黄总大帅逼！', payload: { amount: 1000 } });
     expect(app.auth.store.banners.slice(1).every((banner) => banner.queueName === 'leaderboard')).toBe(true);
-    expect(first.json().user).toMatchObject({ beans: 100000, titles: expect.arrayContaining(['大富翁']) });
+    expect(first.json()).toMatchObject({ refillAmount: 1000, user: { beans: 1000 } });
     user.beans = 0;
-    const second = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie }, payload: { confirmationText: '黄总是大帅比' } });
+    const second = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie }, payload: { confirmationText: '黄总大帅逼' } });
     expect(second.statusCode).toBe(409);
+    user.refill_generation = 2;
+    const third = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie }, payload: { confirmationText: '我是菜逼' } });
+    expect(third.statusCode).toBe(200);
+    expect(third.json()).toMatchObject({ refillAmount: 10000, user: { beans: 10000 } });
+    expect(third.json().banners[0]).toMatchObject({ message: '归零：我是菜逼！', payload: { amount: 10000 } });
     await app.close();
   });
 
@@ -106,10 +111,10 @@ describe('leaderboards and refill', () => {
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(firstUser.refill_generation).toBe(1);
-    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总是大帅比' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总大帅逼' } })).statusCode).toBe(200);
 
     firstUser.beans = 0;
-    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总是大帅比' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总大帅逼' } })).statusCode).toBe(409);
     firstUser.beans = 100000;
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
@@ -120,7 +125,7 @@ describe('leaderboards and refill', () => {
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
 
     expect(firstUser.refill_generation).toBe(2);
-    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总是大帅比' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: firstCookie }, payload: { confirmationText: '黄总大帅逼' } })).statusCode).toBe(200);
     await app.close();
   });
 
@@ -176,7 +181,7 @@ describe('leaderboards and refill', () => {
     user.refill_generation = 1;
     user.last_zero_generation = null;
 
-    const pending = app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: registration.headers['set-cookie'] }, payload: { confirmationText: '黄总是大帅比' } });
+    const pending = app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: registration.headers['set-cookie'] }, payload: { confirmationText: '黄总大帅逼' } });
     await flushStarted;
     const concurrent = { id: 9999, queueName: 'leaderboard', message: '并发横幅', payload: {}, createdAt: new Date().toISOString() };
     app.auth.store.banners.push(concurrent);
@@ -185,7 +190,7 @@ describe('leaderboards and refill', () => {
 
     expect(response.statusCode).toBe(500);
     expect(app.auth.store.banners).toContain(concurrent);
-    expect(app.auth.store.banners.some((banner) => banner.message === '回滚：黄总是大帅比！')).toBe(false);
+    expect(app.auth.store.banners.some((banner) => banner.message === '回滚：黄总大帅逼！')).toBe(false);
     await app.close();
   });
 
@@ -208,7 +213,7 @@ describe('leaderboards and refill', () => {
     user.beans = 0;
     user.refill_generation = 1;
     user.last_zero_generation = null;
-    const request = () => app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: registration.headers['set-cookie'] }, payload: { confirmationText: '黄总是大帅比' } });
+    const request = () => app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: registration.headers['set-cookie'] }, payload: { confirmationText: '黄总大帅逼' } });
 
     const first = request();
     await flushStarted;
@@ -221,7 +226,7 @@ describe('leaderboards and refill', () => {
     expect(responses.map((response) => response.statusCode).sort()).toEqual([200, 409]);
     const success = responses.find((response) => response.statusCode === 200).json();
     expect(success.banners.some((banner) => banner.message === concurrent.message)).toBe(false);
-    expect(app.auth.store.banners.filter((banner) => banner.message === '并发补豆：黄总是大帅比！')).toHaveLength(1);
+    expect(app.auth.store.banners.filter((banner) => banner.message === '并发补豆：黄总大帅逼！')).toHaveLength(1);
     await app.close();
   });
 
@@ -271,7 +276,7 @@ describe('leaderboards and refill', () => {
     const refill = fetch(`${origin}/api/me/refill`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: currentCookie },
-      body: JSON.stringify({ confirmationText: '黄总是大帅比' })
+      body: JSON.stringify({ confirmationText: '黄总大帅逼' })
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     rejectRoomFlush(new Error('room flush failed'));
@@ -281,7 +286,7 @@ describe('leaderboards and refill', () => {
     expect(refillResponse.status).toBe(409);
     expect(currentUser.beans).toBe(1);
     expect(storeFlushes).toBe(0);
-    expect(app.auth.store.banners.some((banner) => banner.message === `${currentUser.nickname}：黄总是大帅比！`)).toBe(false);
+    expect(app.auth.store.banners.some((banner) => banner.message === `${currentUser.nickname}：黄总大帅逼！`)).toBe(false);
     await app.close();
   });
 });

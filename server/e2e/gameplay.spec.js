@@ -282,11 +282,11 @@ test('a zero-balance account must type the exact refill text before receiving be
   await page.locator('#refillConfirmation').fill('不正确');
   await page.locator('#refillForm button[type="submit"]').click();
   await expect(page.locator('#refillError')).toContainText('确认文字不正确');
-  await page.locator('#refillConfirmation').fill('黄总是大帅比');
+  await page.locator('#refillConfirmation').fill('黄总大帅逼');
   await page.locator('#refillForm button[type="submit"]').click();
   await expect(page.locator('#refillDialog')).not.toBeVisible();
-  await expect(page.locator('#accountLabel')).toContainText('100,000 豆');
-  await expect(page.locator('#globalTicker')).toContainText(`${zeroUser.nickname}：黄总是大帅比！`);
+  await expect(page.locator('#accountLabel')).toContainText('1,000 豆');
+  await expect(page.locator('#globalTicker')).toContainText(`${zeroUser.nickname}：黄总大帅逼！`);
   await first.close();
   await second.close();
 });

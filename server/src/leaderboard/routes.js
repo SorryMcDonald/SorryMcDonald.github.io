@@ -1,6 +1,11 @@
 import { appendBanner, appendRankingChanges, rankUsers, resolveUserTitles, snapshotRanking } from './ranking.js';
 import { mutationQueueFor } from '../persistence/mutation-queue.js';
 
+const REFILL_REWARDS = new Map([
+  ['黄总大帅逼', 1_000],
+  ['我是菜逼', 10_000]
+]);
+
 export { LOSS_TITLES, WIN_TITLES, appendBanner, appendRankingChanges, rankUsers, resolveUserTitles, snapshotRanking, titleFor } from './ranking.js';
 
 export function registerLeaderboardRoutes(app, options = {}) {
@@ -22,14 +27,16 @@ export function registerLeaderboardRoutes(app, options = {}) {
     const refill = previousRefill.catch(() => {}).then(() => mutationQueue.run(async () => {
       const user = store.users.get(request.user.id); if (!user) return reply.code(404).send({ error: '用户不存在' });
       if (Number(user.beans ?? 0) !== 0) return reply.code(409).send({ error: '余额不为零，不能领取补给' });
-      if (request.body?.confirmationText !== '黄总是大帅比') return reply.code(400).send({ error: '确认文字不正确' });
+      const confirmationText = String(request.body?.confirmationText ?? '').trim();
+      const refillAmount = REFILL_REWARDS.get(confirmationText);
+      if (!refillAmount) return reply.code(400).send({ error: '确认文字不正确' });
       const generation = Number(user.refill_generation ?? 0);
       if (user.last_zero_generation !== null && user.last_zero_generation !== undefined && Number(user.last_zero_generation) === generation) return reply.code(409).send({ error: '本次归零已经领取过补给' });
       const beforeBannerCount = store.banners.length;
       const beforeRanking = snapshotRanking(store.users.values());
       const previous = { beans: user.beans, lastZeroGeneration: user.last_zero_generation };
-      const fixed = appendBanner(store, 'economy', `${user.nickname}：黄总是大帅比！`, { userId: user.id });
-      user.beans = 100000;
+      const fixed = appendBanner(store, 'economy', `${user.nickname}：${confirmationText}！`, { userId: user.id, amount: refillAmount });
+      user.beans = Number(user.beans ?? 0) + refillAmount;
       user.last_zero_generation = generation;
       const rankingBanners = appendRankingChanges(store, beforeRanking, snapshotRanking(store.users.values()));
       const insertedBanners = [fixed, ...rankingBanners];
@@ -48,10 +55,11 @@ export function registerLeaderboardRoutes(app, options = {}) {
       const titles = resolveUserTitles(store.users.values()).get(user.id) ?? [];
       return {
         user: { id: user.id, nickname: user.nickname, beans: user.beans, titles },
+        refillAmount,
         banners: insertedBanners,
         events: [
           { type: 'fixed_banner', banner: fixed },
-          { type: 'refill', beans: user.beans },
+          { type: 'refill', amount: refillAmount, beans: user.beans },
           ...rankingBanners.map((banner) => ({ type: 'ranking_banner', banner }))
         ]
       };

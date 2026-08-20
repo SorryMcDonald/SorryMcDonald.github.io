@@ -195,12 +195,12 @@ describe('public black-box gameplay', () => {
       const message = JSON.parse(raw.toString());
       if (message.type === 'global_banner') messages.push(message.banner);
     });
-    const correct = await request(origin, '/api/me/refill', { method: 'POST', cookie: loser.cookie, body: { confirmationText: '黄总是大帅比' } });
+    const correct = await request(origin, '/api/me/refill', { method: 'POST', cookie: loser.cookie, body: { confirmationText: '黄总大帅逼' } });
     expect(correct.status).toBe(200);
     expect(correct.body.events.slice(0, 2).map((event) => event.type)).toEqual(['fixed_banner', 'refill']);
-    expect(correct.body.user.beans).toBe(100000);
+    expect(correct.body).toMatchObject({ refillAmount: 1000, user: { beans: 1000 } });
     await waitFor(() => messages.length >= correct.body.banners.length && messages);
-    expect(messages[0]).toMatchObject({ queueName: 'economy', message: `${loser.nickname}：黄总是大帅比！` });
+    expect(messages[0]).toMatchObject({ queueName: 'economy', message: `${loser.nickname}：黄总大帅逼！`, payload: { amount: 1000 } });
     for (const kind of ['wealth', 'wins', 'losses']) {
       const ranking = await request(origin, `/api/leaderboards?kind=${kind}`, { cookie: loser.cookie });
       expect(ranking.status).toBe(200);

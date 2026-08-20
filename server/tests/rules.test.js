@@ -29,9 +29,11 @@ describe('炸金花 rules', () => {
     ]).seat).toBe(4);
   });
 
-  it('does not settle on one all-in while another player can act', () => {
+  it('does not settle while any surviving player can still act', () => {
     expect(shouldSettle({ alive: 3, actionable: 2, allMatched: false, allActed: true })).toBe(false);
+    expect(shouldSettle({ alive: 3, actionable: 1, allMatched: false, allActed: true })).toBe(false);
     expect(shouldSettle({ alive: 3, actionable: 0, allMatched: true, allActed: true })).toBe(true);
+    expect(shouldSettle({ alive: 1, actionable: 1 })).toBe(true);
   });
 
   it('keeps compare details hidden in the event contract', () => {

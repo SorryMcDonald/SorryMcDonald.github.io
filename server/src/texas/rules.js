@@ -1,3 +1,5 @@
+export const TEXAS_MIN_RAISE = 100;
+
 const HAND_NAMES = ['', '高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
 
 function rankCounts(cards) {

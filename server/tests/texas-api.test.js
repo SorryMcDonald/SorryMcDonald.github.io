@@ -80,10 +80,10 @@ describe('Texas API contract',() => {
     const app=await buildApp({ logger:false,attachGateway:true });
     const host=await register(app,'texas-host@example.com','德州房主');
     const guest=await register(app,'texas-guest@example.com','德州客人');
-    const created=await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{ buyIn:1000,allowSpectators:true } });
+    const created=await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{ buyIn:10000,allowSpectators:true } });
     expect(created.statusCode).toBe(200);
     const room=created.json().room;
-    const joined=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{ buyIn:1000 } });
+    const joined=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{ buyIn:10000 } });
     expect(joined.statusCode).toBe(200);
     const started=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} });
     expect(started.statusCode).toBe(200);

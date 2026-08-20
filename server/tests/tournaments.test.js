@@ -20,12 +20,12 @@ describe('weekly tournaments', () => {
     const app = await buildApp({ logger:false, tournamentClock:clock });
     const player = await register(app, 'boundary');
 
-    const early = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:1000 } });
+    const early = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:4000 } });
     expect(early.statusCode).toBe(403);
     expect((await app.inject({ method:'GET', url:'/api/tournaments/current', headers:{ cookie:player.cookie } })).json().tournament.status).toBe('scheduled');
 
     clock.set('2026-08-19T04:00:00.000Z');
-    const opened = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:1000 } });
+    const opened = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:4000 } });
     expect(opened.statusCode).toBe(200);
     expect(opened.json().room.tournament.game).toBe('texas');
     await app.close();
@@ -39,14 +39,14 @@ describe('weekly tournaments', () => {
 
     const aboveCap = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:first.cookie }, payload:{ buyIn:200001 } });
     expect(aboveCap.statusCode).toBe(400);
-    const entered = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:first.cookie }, payload:{ buyIn:1000 } });
+    const entered = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:first.cookie }, payload:{ buyIn:4000 } });
     const roomId = entered.json().roomId;
-    const bypass = await app.inject({ method:'POST', url:`/api/texas/rooms/${roomId}/join`, headers:{ cookie:second.cookie }, payload:{ buyIn:1000 } });
+    const bypass = await app.inject({ method:'POST', url:`/api/texas/rooms/${roomId}/join`, headers:{ cookie:second.cookie }, payload:{ buyIn:4000 } });
     expect(bypass.statusCode).toBe(403);
     const rebuy = await app.inject({ method:'POST', url:`/api/texas/rooms/${roomId}/rebuy`, headers:{ cookie:first.cookie }, payload:{ amount:100 } });
     expect(rebuy.statusCode).toBe(409);
     expect((await app.inject({ method:'POST', url:`/api/texas/rooms/${roomId}/leave`, headers:{ cookie:first.cookie }, payload:{} })).statusCode).toBe(200);
-    const reentry = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:first.cookie }, payload:{ buyIn:1000 } });
+    const reentry = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:first.cookie }, payload:{ buyIn:4000 } });
     expect(reentry.statusCode).toBe(409);
     await app.close();
   });
@@ -82,7 +82,7 @@ describe('weekly tournaments', () => {
     for (let index = 0; index < 10; index += 1) {
       const player = await register(app, `table-${index}`);
       players.push(player);
-      const entered = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:400 } });
+      const entered = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:4000 } });
       expect(entered.statusCode).toBe(200);
     }
     const tournament = app.tournaments.view(null);
@@ -108,8 +108,8 @@ describe('weekly tournaments', () => {
     const clock = clockAt('2026-08-19T04:05:00.000Z');
     const app = await buildApp({ logger:false, tournamentClock:clock });
     const player = await register(app, 'champion');
-    await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:1000 } });
-    expect(app.auth.store.users.get(player.user.id).beans).toBe(99000);
+    await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:4000 } });
+    expect(app.auth.store.users.get(player.user.id).beans).toBe(96000);
 
     clock.set('2026-08-19T04:30:00.000Z');
     const current = await app.inject({ method:'GET', url:'/api/tournaments/current', headers:{ cookie:player.cookie } });
@@ -129,7 +129,7 @@ describe('weekly tournaments', () => {
       texasPersistence:{ async flushRoom(){ throw new Error('database unavailable'); } }
     });
     const player = await register(app, 'rollback');
-    const response = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:1000 } });
+    const response = await app.inject({ method:'POST', url:'/api/tournaments/texas/enter', headers:{ cookie:player.cookie }, payload:{ buyIn:4000 } });
     expect(response.statusCode).toBe(500);
     expect(rolledBack).toHaveLength(1);
     expect(app.auth.store.users.get(player.user.id).beans).toBe(100000);

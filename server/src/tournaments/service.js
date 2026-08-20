@@ -5,7 +5,7 @@ export const TOURNAMENT_REGISTRATION_MINUTES = 30;
 export const TOURNAMENT_TIME_ZONE = 'Asia/Shanghai';
 
 const GAME_CONFIG = {
-  texas: { label:'德州扑克', capacity:9, minimumBuyIn:400, path:'/dezhou.html' },
+  texas: { label:'德州扑克', capacity:9, minimumBuyIn:4000, path:'/dezhou.html' },
   zhajinhua: { label:'炸金花', capacity:6, minimumBuyIn:10, path:'/' }
 };
 
@@ -181,7 +181,7 @@ export class TournamentService {
     if (!table) {
       tournament.tableNumber = track.nextTableNumber++;
       room = game === 'texas'
-        ? service.createTournamentRoom(userId, { buyIn, minBuyIn:400, maxBuyIn:TOURNAMENT_BUY_IN_CAP, maxPlayers:config.capacity, smallBlind:10, bigBlind:20 }, tournament)
+        ? service.createTournamentRoom(userId, { buyIn, minBuyIn:4000, maxBuyIn:TOURNAMENT_BUY_IN_CAP, maxPlayers:config.capacity, smallBlind:100, bigBlind:200 }, tournament)
         : service.createTournamentRoom(userId, { buyIn, ante:10 }, tournament);
       table = { id:randomUUID(), roomId:room.id, number:tournament.tableNumber, status:'active' };
       track.tables.set(table.id, table);

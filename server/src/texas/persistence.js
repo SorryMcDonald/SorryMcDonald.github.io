@@ -1,4 +1,5 @@
 import { isTransientChatEvent } from '../persistence/runtime-state.js';
+import { TEXAS_MIN_RAISE } from './rules.js';
 
 function serializeRoom(room) {
   const { messages, chatLastAt, chatSeq, ...durable } = room;
@@ -21,6 +22,7 @@ function deserializeRoom(state) {
   if (!state?.id) return null;
   return {
     ...state,
+    minRaise:TEXAS_MIN_RAISE,
     players:new Map(Array.isArray(state.players) ? state.players : []),
     spectators:new Set(Array.isArray(state.spectators) ? state.spectators : []),
     events:Array.isArray(state.events) ? state.events.filter((event) => !isTransientChatEvent(event)) : [],

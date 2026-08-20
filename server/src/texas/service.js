@@ -1,8 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { allowedActions, blindPositions, calculateTexasPots, evaluateTexasHand, makeDeck, nextSeat } from './rules.js';
+import { TEXAS_MIN_RAISE, allowedActions, blindPositions, calculateTexasPots, evaluateTexasHand, makeDeck, nextSeat } from './rules.js';
 
 const ACTIVE_STREETS = new Set(['preflop', 'flop', 'turn', 'river']);
-const DEFAULTS = { smallBlind: 10, bigBlind: 20, minBuyIn: 400, maxBuyIn: 2000, defaultBuyIn: 1000, maxPlayers: 9 };
+const DEFAULTS = { smallBlind: 100, bigBlind: 200, minBuyIn: 4_000, maxBuyIn: 20_000, defaultBuyIn: 10_000, maxPlayers: 9 };
 export const TEXAS_TURN_TIMEOUT_MS = 60_000;
 
 function httpError(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }
@@ -49,7 +49,7 @@ function revealStreet(room, street) {
   room.board.push(...room.deck.splice(-count).reverse());
   room.status = street;
   room.currentBet = 0;
-  room.minRaise = room.bigBlind;
+  room.minRaise = TEXAS_MIN_RAISE;
   for (const player of handPlayers(room)) {
     player.streetBet = 0;
     player.acted = false;
@@ -134,7 +134,7 @@ export class TexasService {
     const room = {
       id, code:String(input.code ?? Math.floor(100000 + Math.random() * 900000)), status:'waiting', hostUserId:userId,
       isPublic:tournament ? false : input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.allowSpectators),
-      smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:bigBlind,
+      smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:TEXAS_MIN_RAISE,
       pot:0, pots:[], board:[], deck:[], handNumber:0, hand:null, players:new Map(), spectators:new Set(),
       events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[],
       messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null,
@@ -236,7 +236,7 @@ export class TexasService {
     room.dealerSeat = room.dealerSeat === null ? players.sort((a,b) => a.seat-b.seat)[0].seat : nextSeat(players, room.dealerSeat, () => true);
     room.handNumber += 1;
     room.hand = { id:randomUUID(), number:room.handNumber, startedAt:new Date().toISOString() };
-    room.status = 'preflop'; room.board = []; room.deck = shuffledDeck(); room.pot = 0; room.pots = []; room.currentBet = 0; room.minRaise = room.bigBlind;
+    room.status = 'preflop'; room.board = []; room.deck = shuffledDeck(); room.pot = 0; room.pots = []; room.currentBet = 0; room.minRaise = TEXAS_MIN_RAISE;
     for (const player of activePlayers(room)) {
       player.inHand = player.stack > 0; player.waiting = player.stack <= 0; player.folded = false; player.allIn = false;
       player.acted = false; player.canRaise = true; player.streetBet = 0; player.totalContribution = 0; player.actionSeq = 0;
@@ -297,7 +297,7 @@ export class TexasService {
         fullRaise = oldCurrentBet === 0 ? target >= room.bigBlind : increase >= room.minRaise;
         room.currentBet = target;
         if (fullRaise) {
-          room.minRaise = oldCurrentBet === 0 ? target : increase;
+          room.minRaise = TEXAS_MIN_RAISE;
           for (const other of actionable(room)) { other.acted = false; other.canRaise = true; }
         }
       }

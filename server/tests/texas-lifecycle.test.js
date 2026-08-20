@@ -27,8 +27,8 @@ function fixture() {
   const store = { users, banners:[] };
   const clock = new FakeClock(1000);
   const service = new TexasService({ store, clock });
-  const room = service.createRoom('u0', { buyIn:1000 });
-  service.joinRoom(room.id, 'u1', { buyIn:1000 });
+  const room = service.createRoom('u0', { buyIn:10000 });
+  service.joinRoom(room.id, 'u1', { buyIn:10000 });
   return { clock, service, room };
 }
 

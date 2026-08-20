@@ -16,6 +16,12 @@ describe('Texas browser client contract',() => {
     expect(js).toContain('room.allowedActions');
     expect(js).toContain("$('refreshButton').addEventListener('click',loadRooms)");
     expect(js).not.toMatch(/setInterval\([^)]*loadRooms/);
+    expect(html).toContain('id="smallBlindInput" type="number" min="1" value="100"');
+    expect(html).toContain('id="bigBlindInput" type="number" min="2" value="200"');
+    expect(html).toContain('id="createBuyInInput" type="number" min="4000" value="10000"');
+    expect(js).toContain("['黄总大帅逼',1_000]");
+    expect(js).toContain("['我是菜逼',10_000]");
+    expect(js).toContain("renderGlobalBanner({ type:'global_banner', banner })");
   });
 
   it('provides manual next-hand, leave, rebuy and responsive seat controls',async() => {

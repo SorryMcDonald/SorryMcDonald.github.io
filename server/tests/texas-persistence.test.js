@@ -22,12 +22,13 @@ describe('Texas PostgreSQL persistence contract',() => {
   it('keeps timers durable while resetting chat to the in-memory lifecycle on restore', () => {
     const users=new Map([['u1',{ id:'u1',nickname:'恢复玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
     room.turnStartedAt='2026-08-19T00:00:00.000Z';
     room.turnDeadlineAt='2026-08-19T00:01:00.000Z';
     service.addMessage(room.id,'u1','临时聊天',{ now:1000 });
     const restored=deserializeRoom(serializeRoom(room));
     expect(restored.turnDeadlineAt).toBe(room.turnDeadlineAt);
+    expect(restored.minRaise).toBe(100);
     expect(restored.messages).toEqual([]);
     expect(restored.chatLastAt).toBeInstanceOf(Map);
     expect(JSON.stringify(serializeRoom(room))).not.toMatch(/临时聊天/);
@@ -36,7 +37,7 @@ describe('Texas PostgreSQL persistence contract',() => {
   it('does not write historical or incremental chat events to texas_actions', async () => {
     const users=new Map([['u1',{ id:'u1',nickname:'聊天过滤',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
     room.events.push(
       { id:900, eventType:'texas_chat_message', payload:{ message:{ text:'历史聊天' } } },
       { id:901, eventType:'chat_message', payload:{ message:{ text:'错误类型聊天' } } },
@@ -54,7 +55,7 @@ describe('Texas PostgreSQL persistence contract',() => {
   it('writes room, players, wallet ledger and events in one transaction',async() => {
     const users=new Map([['u1',{ id:'u1',nickname:'持久化玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
     const db=fakeDb();
     const persistence=createTexasPersistence({ db,service });
     await persistence.flushRoom(room.id,-1,0);
@@ -74,8 +75,8 @@ describe('Texas PostgreSQL persistence contract',() => {
       ['u2',{ id:'u2',nickname:'JSON乙',beans:100000,wins:0,losses:0 }]
     ]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
-    service.joinRoom(room.id,'u2',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
+    service.joinRoom(room.id,'u2',{ buyIn:10000 });
     service.startHand(room.id,'u1');
     const actor=[...room.players.values()].find((player) => player.seat===room.currentTurn);
     service.action(room.id,actor.userId,{ type:'fold',handId:room.hand.id,version:room.version,actionSeq:1,clientActionId:'jsonb-fold-action' });
@@ -103,7 +104,7 @@ describe('Texas PostgreSQL persistence contract',() => {
   it('deletes a reclaimed room and its cascading records in one transaction',async() => {
     const users=new Map([['u1',{ id:'u1',nickname:'回收玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
     const db=fakeDb();
 
     await createTexasPersistence({ db,service }).deleteRoom(room.id);
@@ -119,7 +120,7 @@ describe('Texas PostgreSQL persistence contract',() => {
   it('rolls back and preserves pending entries when persistence fails',async() => {
     const users=new Map([['u1',{ id:'u1',nickname:'失败玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
     const db={ async query(text) { if (/INSERT INTO texas_rooms/i.test(text)) throw new Error('database unavailable'); return { rows:[] }; } };
     const persistence=createTexasPersistence({ db,service });
     await expect(persistence.flushRoom(room.id,-1,0)).rejects.toThrow(/database unavailable/);
@@ -132,8 +133,8 @@ describe('Texas PostgreSQL persistence contract',() => {
       ['u2',{ id:'u2',nickname:'结算乙',beans:100000,wins:0,losses:0 }]
     ]);
     const service=new TexasService({ store:{ users,banners:[] } });
-    const room=service.createRoom('u1',{ buyIn:1000 });
-    service.joinRoom(room.id,'u2',{ buyIn:1000 });
+    const room=service.createRoom('u1',{ buyIn:10000 });
+    service.joinRoom(room.id,'u2',{ buyIn:10000 });
     service.startHand(room.id,'u1');
     const actor=[...room.players.values()].find((player) => player.seat===room.currentTurn);
     service.action(room.id,actor.userId,{ type:'fold',handId:room.hand.id,version:room.version,actionSeq:1,clientActionId:'settle-fold-action' });

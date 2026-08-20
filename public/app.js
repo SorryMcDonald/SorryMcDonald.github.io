@@ -25,7 +25,10 @@ const CARD_RANKS = { 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: 
 const CARD_SUITS = { S: '♠', H: '♥', C: '♣', D: '♦', '♠': '♠', '♥': '♥', '♣': '♣', '♦': '♦' };
 const RED_CARD_SUITS = new Set(['♥', '♦']);
 const ROOM_STATUS_LABELS = { waiting: '等待开局', betting: '下注中', comparing: '比牌中', settled: '本局已结算' };
-const REFILL_CONFIRMATION_TEXT = '黄总是大帅比';
+const REFILL_REWARDS = new Map([
+  ['黄总大帅逼', 1_000],
+  ['我是菜逼', 10_000]
+]);
 
 function makeCard(card) {
   const node = document.createElement('span');
@@ -648,17 +651,18 @@ async function sendChat(event) {
 async function submitRefill(event) {
   event.preventDefault();
   $('refillError').textContent = '';
-  const confirmationText = $('refillConfirmation').value;
-  if (confirmationText !== REFILL_CONFIRMATION_TEXT) {
+  const confirmationText = $('refillConfirmation').value.trim();
+  if (!REFILL_REWARDS.has(confirmationText)) {
     $('refillError').textContent = '确认文字不正确';
     return;
   }
   try {
     const data = await api('/api/me/refill', { method: 'POST', body: { confirmationText } });
     applyUser(data.user);
+    data.banners?.forEach((banner) => renderGlobalBanner({ type: 'global_banner', banner }));
     $('refillConfirmation').value = '';
     $('refillDialog').close();
-    addFeed('补豆成功，余额已恢复至 100,000 豆');
+    addFeed(`补豆成功，增加 ${Number(data.refillAmount ?? REFILL_REWARDS.get(confirmationText)).toLocaleString()} 豆`);
     if (state.room) await loadRoom();
   } catch (error) {
     $('refillError').textContent = error.message;

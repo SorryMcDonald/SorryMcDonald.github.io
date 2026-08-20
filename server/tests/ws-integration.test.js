@@ -238,7 +238,7 @@ describe('real WebSocket gateway', () => {
       method: 'POST',
       url: '/api/texas/rooms',
       headers: { cookie: account.cookie },
-      payload: { buyIn: 1000 }
+      payload: { buyIn: 10000 }
     })).json().room;
     const socket = await connect(origin, room.code, account.cookie, { game: 'texas' });
     const received = waitForMessage(socket, (message) => message.game === 'texas' && message.event?.eventType === 'texas_test_event');

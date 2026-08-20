@@ -107,7 +107,7 @@ export function selectDealer(results = []) {
 
 export function shouldSettle({ alive = 0, actionable = 0 } = {}) {
   if (alive <= 1) return true;
-  return actionable <= 1;
+  return actionable === 0;
 }
 
 export function buildCompareEvents({ attacker, target, fee = 0, attackerWon } = {}) {
