@@ -106,8 +106,8 @@ describe('leaderboards and refill', () => {
     const initial = app.rooms.room(room.id);
     const firstPlayer = [...initial.players.values()].find((player) => player.userId === first.json().user.id);
     const secondPlayer = [...initial.players.values()].find((player) => player.userId === second.json().user.id);
-    firstPlayer.cards = [{ rank: 2, suit: 'S' }, { rank: 3, suit: 'H' }, { rank: 5, suit: 'D' }];
-    secondPlayer.cards = [{ rank: 14, suit: 'S' }, { rank: 14, suit: 'H' }, { rank: 14, suit: 'D' }];
+    firstPlayer.cards = [{ rank: 14, suit: 'S' }, { rank: 14, suit: 'H' }, { rank: 14, suit: 'D' }];
+    secondPlayer.cards = [{ rank: 2, suit: 'S' }, { rank: 3, suit: 'H' }, { rank: 5, suit: 'D' }];
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(firstUser.refill_generation).toBe(1);
@@ -118,6 +118,7 @@ describe('leaderboards and refill', () => {
     firstUser.beans = 100000;
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: third.headers['set-cookie'] }, payload: { action: 'fold', actionSeq: 1 } });
     const settled = app.rooms.room(room.id);
     settled.dealerUserId = first.json().user.id;
     settled.dealerSeat = firstPlayer.seat;

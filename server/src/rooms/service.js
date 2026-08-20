@@ -63,6 +63,17 @@ function actionablePlayers(room) {
   return alivePlayers(room).filter((player) => !player.allIn && !player.left);
 }
 
+function highestCurrentBet(room) {
+  return roundPlayers(room).reduce((highest, player) => Math.max(highest, Number(player.currentBet ?? 0)), 0);
+}
+
+function callAmount(room, player, normalAmount) {
+  const allInTarget = roundPlayers(room)
+    .filter((candidate) => candidate.allIn && !candidate.folded && !candidate.left)
+    .reduce((highest, candidate) => Math.max(highest, Number(candidate.currentBet ?? 0)), 0);
+  return Math.max(Number(normalAmount), allInTarget - Number(player.currentBet ?? 0));
+}
+
 function nextSeat(room, seat) {
   const seats = actionablePlayers(room).map((player) => player.seat).sort((left, right) => left - right);
   return seats.find((value) => value > seat) ?? seats[0] ?? -1;
@@ -425,15 +436,20 @@ export class RoomService {
     if (type === 'fold') {
       player.folded = true;
     } else if (type === 'call') {
-      amount = debit(room, player, user, actionCost({ level: room.level, seen: player.seen, action: 'call' }));
+      const normalAmount = actionCost({ level: room.level, seen: player.seen, action: 'call' });
+      const requiredAmount = callAmount(room, player, normalAmount);
+      amount = debit(room, player, user, Math.min(requiredAmount, playerBalance(room, player, user)));
+      if (playerBalance(room, player, user) === 0) player.allIn = true;
     } else if (type === 'raise') {
       const raise = validateRaise({ amount: input.amount, level: room.level, balance: playerBalance(room, player, user), seen: player.seen });
       amount = debit(room, player, user, raise.charge);
       room.level = raise.base;
       room.roundActedSeats = [];
     } else if (type === 'all_in') {
+      const previousHighest = highestCurrentBet(room);
       amount = debit(room, player, user, playerBalance(room, player, user));
       player.allIn = true;
+      if (player.currentBet > previousHighest) room.roundActedSeats = [];
     } else {
       throw httpError(400, '未知动作');
     }

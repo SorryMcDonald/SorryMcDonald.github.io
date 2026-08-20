@@ -364,7 +364,9 @@ export class TexasService {
     const uncontested = contenders(room).length === 1;
     const handPlayersBefore = handPlayers(room);
     const contributionTotal = handPlayersBefore.reduce((sum, player) => sum + numeric(player.totalContribution), 0);
-    const tableTotalBefore = handPlayersBefore.reduce((sum, player) => sum + userBeans(this.user(player.userId)) + numeric(player.stack), 0);
+    // Contributions are held in room.pot until payouts are applied. Include
+    // that escrowed amount in the pre-settlement conservation baseline.
+    const tableTotalBefore = handPlayersBefore.reduce((sum, player) => sum + userBeans(this.user(player.userId)) + numeric(player.stack), 0) + numeric(room.pot);
     if (numeric(room.pot) !== contributionTotal) throw new Error(`德州结算池子与玩家贡献不一致: pot=${room.pot}, contributed=${contributionTotal}`);
     for (const player of contenders(room)) {
       const availableCards = [...player.holeCards, ...room.board];

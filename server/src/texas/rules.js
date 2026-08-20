@@ -67,11 +67,9 @@ export function calculateTexasPots(players = [], dealerSeat = 0) {
     previous = level;
     if (amount <= 0) continue;
     // A single contributor cannot form a contestable layer. Return their
-    // unmatched excess, but keep it in the persisted pot breakdown so the
-    // recorded hand total still equals every chip committed to the hand.
+    // unmatched excess instead of recording it as a contestable pot.
     if (contributors.length === 1) {
       payouts[contributors[0].id] += amount;
-      pots.push({ amount, unmatched: true, eligiblePlayerIds: [contributors[0].id], winnerIds: [contributors[0].id] });
       continue;
     }
     const eligible = contributors.filter((player) => !player.folded && !player.left);
@@ -103,7 +101,7 @@ export function calculateTexasPots(players = [], dealerSeat = 0) {
       if (remainder > 0) remainder -= 1;
       payouts[winner.id] += value;
     }
-    pots.push({ amount, unmatched: false, eligiblePlayerIds: eligible.map((player) => player.id), winnerIds: clockwise.map((player) => player.id) });
+    pots.push({ amount, eligiblePlayerIds: eligible.map((player) => player.id), winnerIds: clockwise.map((player) => player.id) });
   }
   const contributedTotal = contributed.reduce((sum, player) => sum + Number(player.totalContribution ?? 0), 0);
   const paidTotal = Object.values(payouts).reduce((sum, payout) => sum + Number(payout ?? 0), 0);

@@ -212,9 +212,9 @@ function upperArcPositions(count) {
   const layouts = {
     1: [{ left: 50, top: 20 }],
     2: [{ left: 28, top: 22 }, { left: 72, top: 22 }],
-    3: [{ left: 18, top: 34 }, { left: 50, top: 18 }, { left: 82, top: 34 }],
+    3: [{ left: 18, top: 34 }, { left: 50, top: 19 }, { left: 82, top: 34 }],
     4: [{ left: 13, top: 42 }, { left: 36, top: 21 }, { left: 64, top: 21 }, { left: 87, top: 42 }],
-    5: [{ left: 11, top: 54 }, { left: 25, top: 20 }, { left: 50, top: 17 }, { left: 75, top: 20 }, { left: 89, top: 54 }]
+    5: [{ left: 11, top: 64 }, { left: 25, top: 20 }, { left: 50, top: 19 }, { left: 75, top: 20 }, { left: 89, top: 64 }]
   };
   return layouts[count] ?? [];
 }
@@ -226,7 +226,7 @@ function projectSeats(players, userId) {
     const arc = upperArcPositions(ordered.length - 1);
     return ordered.map((player, index) => ({
       player,
-      position: index === 0 ? { left: 50, top: 84 } : arc[index - 1] ?? { left: 50, top: 50 },
+      position: index === 0 ? { left: 50, top: 82 } : arc[index - 1] ?? { left: 50, top: 50 },
       self: false
     }));
   }
@@ -234,7 +234,7 @@ function projectSeats(players, userId) {
   const arc = upperArcPositions(rotated.length - 1);
   return rotated.map((player, index) => ({
     player,
-    position: index === 0 ? { left: 50, top: 84 } : arc[index - 1],
+    position: index === 0 ? { left: 50, top: 82 } : arc[index - 1],
     self: index === 0
   }));
 }
@@ -362,7 +362,11 @@ function renderActions() {
   const spectator = room.isSpectator || !player;
   const canAdvance = Boolean(!spectator && room.status === 'betting' && player.seat === room.currentTurn && !player.folded && !player.allIn);
   const multiplier = player?.seen ? 2 : 1;
-  const callCost = Number(room.level || room.ante || 0) * multiplier;
+  const normalCallCost = Number(room.level || room.ante || 0) * multiplier;
+  const allInTarget = room.players
+    .filter((candidate) => candidate.allIn && !candidate.folded)
+    .reduce((highest, candidate) => Math.max(highest, Number(candidate.currentBet || 0)), 0);
+  const callCost = Math.max(normalCallCost, allInTarget - Number(player?.currentBet || 0));
   $('actionPanel').hidden = spectator || room.status !== 'betting';
   $('seeButton').hidden = spectator || room.status !== 'betting' || player.seen || player.folded;
   $('seeButton').disabled = spectator || player?.folded;

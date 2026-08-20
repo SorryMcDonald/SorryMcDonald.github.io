@@ -66,7 +66,7 @@ function projectedSeatSlots(room) {
   for (let offset = 0; offset < count; offset += 1) {
     const seat = (anchor + offset) % count;
     const self = Boolean(own && seat === Number(own.seat));
-    const position = self ? { left:'50%', top:'84%' } : seatPosition(arcIndex++, own ? count - 1 : count);
+    const position = self ? { left:'50%', top:'82%' } : seatPosition(arcIndex++, own ? count - 1 : count);
     slots.push({ seat, player:players.get(seat) ?? null, self, position });
   }
   return slots;

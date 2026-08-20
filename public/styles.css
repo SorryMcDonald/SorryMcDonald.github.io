@@ -132,7 +132,7 @@ body:has(#authView:not([hidden])) main{display:flex;align-items:center;justify-c
 .compare-notice{max-width:310px;min-height:22px;margin-top:7px;overflow:hidden;color:#d8f2df;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .players{position:absolute;inset:0;z-index:3}
 .player-seat{position:absolute;top:var(--seat-top);left:var(--seat-left);width:22%;max-width:180px;min-width:138px;transform:translate(-50%,-50%);text-align:center;transition:filter .2s ease,opacity .2s ease,transform .25s ease}
-.player-seat.self{top:84%;z-index:5}
+.player-seat.self{top:79%;z-index:5}
 .player-seat.folded{filter:saturate(.35);opacity:.67}
 .player-name{display:inline-block;max-width:100%;overflow:hidden;padding:3px 11px;border-radius:999px;background:rgba(0,0,0,.58);font-size:13px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
 .player-seat.dealer .player-name{box-shadow:0 0 0 2px var(--gold)}
@@ -696,7 +696,7 @@ body:has(#authView:not([hidden])) .topbar,body:has(#authView:not([hidden])) .tic
 .compare-notice{color:#dce9de}
 .players{inset:0}
 .player-seat{width:22%;max-width:150px;min-width:108px}
-.player-seat.self{top:84%}
+.player-seat.self{top:79%}
 .player-name{padding:5px 10px;border:1px solid #435248;border-radius:5px;background:#17231b;color:#eff2e9;font-size:12px}
 .player-seat.dealer .player-name{border-color:var(--gold);box-shadow:none}
 .player-seat.current .player-name{border-color:#55b589;box-shadow:0 0 0 1px #55b589}
@@ -874,4 +874,92 @@ dialog::backdrop{background:rgba(4,10,7,.78)}
   .player-meta{font-size:12px}
   .card{width:48px}
   .round-feed,.chat-messages{font-size:13px}
+}
+
+/* Keep an active room inside the viewport; feeds scroll inside their panels. */
+@media(min-width:801px){
+  body:has(.table-layout:not([hidden])){
+    height:100vh;
+    overflow:hidden;
+  }
+
+  body:has(.table-layout:not([hidden])) .app-shell{
+    --room-gutter:clamp(16px,2vw,40px);
+    width:100%;
+    max-width:none;
+    height:100vh;
+    min-height:0;
+    padding-left:var(--room-gutter);
+    padding-right:var(--room-gutter);
+  }
+
+  body:has(.table-layout:not([hidden])) .topbar,
+  body:has(.table-layout:not([hidden])) .ticker{
+    margin-left:calc(-1 * var(--room-gutter));
+    margin-right:calc(-1 * var(--room-gutter));
+    padding-left:var(--room-gutter);
+    padding-right:var(--room-gutter);
+  }
+
+  body:has(.table-layout:not([hidden])) main{
+    display:flex;
+    min-height:0;
+    flex:1 1 auto;
+    flex-direction:column;
+  }
+
+  body:has(.table-layout:not([hidden])) #tableView{
+    display:flex;
+    min-height:0;
+    flex:1 1 auto;
+    flex-direction:column;
+  }
+
+  body:has(.table-layout:not([hidden])) .table-toolbar{
+    flex:0 0 auto;
+  }
+
+  body:has(.table-layout:not([hidden])) .table-layout{
+    width:100%;
+    min-height:0;
+    height:100%;
+    flex:1 1 auto;
+    grid-template-columns:clamp(230px,18vw,320px) minmax(0,1fr) clamp(240px,19vw,360px);
+    grid-template-rows:minmax(0,1fr) auto;
+  }
+
+  body:has(.table-layout:not([hidden])) .felt{
+    width:min(calc(100% - 44px),calc(100vh - 240px));
+    height:auto;
+    max-width:100%;
+    margin-top:18px;
+    margin-bottom:12px;
+  }
+
+  body:has(.table-layout:not([hidden])) .action-panel{
+    margin-bottom:14px;
+  }
+
+  body:has(.table-layout:not([hidden])) .round-panel,
+  body:has(.table-layout:not([hidden])) .chat-panel{
+    display:flex;
+    min-height:0;
+    overflow:hidden;
+    flex-direction:column;
+  }
+
+  body:has(.table-layout:not([hidden])) .round-feed,
+  body:has(.table-layout:not([hidden])) .chat-messages{
+    height:auto;
+    min-height:0;
+    flex:1 1 auto;
+    overflow-y:auto;
+  }
+
+  body:has(.table-layout:not([hidden])) footer{
+    flex:0 0 auto;
+    padding-top:8px;
+    padding-bottom:8px;
+    font-size:12px;
+  }
 }

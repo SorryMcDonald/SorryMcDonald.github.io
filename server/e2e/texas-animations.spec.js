@@ -82,8 +82,8 @@ test('Texas navigation keeps 牌局 local and matches the Zhajinhua header contr
   const page = await context.newPage();
   await page.goto('/dezhou.html');
   await expect(page.locator('#accountLabel')).toContainText('导航1');
-  await expect(page.locator('.primary-nav > *')).toHaveCount(7);
-  await expect(page.locator('.primary-nav > *')).toHaveText(['牌局','游戏大厅','公开房间','德州扑克','斗地主','炸金花','排行榜']);
+  await expect(page.locator('.primary-nav > *')).toHaveCount(8);
+  await expect(page.locator('.primary-nav > *')).toHaveText(['牌局','游戏大厅','公开房间','德州扑克','斗地主','炸金花','锦标赛','排行榜']);
 
   await page.locator('button[data-nav="table"]').click();
   await expect(page).toHaveURL(/\/dezhou\.html$/);
