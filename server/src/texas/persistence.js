@@ -110,7 +110,7 @@ async function persistHand(client, room) {
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT (id) DO UPDATE SET status=excluded.status,board=excluded.board,
       pot=excluded.pot,settled_at=excluded.settled_at`, [
-    room.hand.id,room.id,room.handNumber,handStatus,room.dealerSeat,room.board,handPot,
+    room.hand.id,room.id,room.handNumber,handStatus,room.dealerSeat,JSON.stringify(room.board),handPot,
     room.hand.startedAt,room.hand.settledAt ?? null
   ]);
   for (const player of room.players.values()) {
@@ -132,7 +132,7 @@ async function persistHand(client, room) {
         wins=wins+$2,losses=losses+$3 WHERE id=$1`, [player.userId,result.net>0?1:0,result.net<0?1:0]);
     }
     if (player.holeCards?.length === 2) await client.query(`INSERT INTO texas_hole_cards (hand_id,user_id,cards)
-      VALUES ($1,$2,$3) ON CONFLICT (hand_id,user_id) DO UPDATE SET cards=excluded.cards`, [room.hand.id,player.userId,player.holeCards]);
+      VALUES ($1,$2,$3) ON CONFLICT (hand_id,user_id) DO UPDATE SET cards=excluded.cards`, [room.hand.id,player.userId,JSON.stringify(player.holeCards)]);
   }
   for (let index=0; index < (room.pots?.length ?? 0); index += 1) {
     const pot=room.pots[index];
@@ -142,7 +142,7 @@ async function persistHand(client, room) {
       VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (hand_id,pot_index) DO UPDATE SET amount=excluded.amount,
         eligible_user_ids=excluded.eligible_user_ids,winner_user_ids=excluded.winner_user_ids`, [
-      room.hand.id,index,pot.amount,userIds(pot.eligiblePlayerIds),userIds(pot.winnerIds)
+      room.hand.id,index,pot.amount,JSON.stringify(userIds(pot.eligiblePlayerIds)),JSON.stringify(userIds(pot.winnerIds))
     ]);
   }
 }

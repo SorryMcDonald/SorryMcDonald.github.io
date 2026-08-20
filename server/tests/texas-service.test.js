@@ -66,6 +66,23 @@ describe('Texas room state machine', () => {
     expect(room.status).toBe('settled');
     expect(room.board).toHaveLength(5);
     expect(room.pots.reduce((sum, pot) => sum+pot.amount, 0)).toBe(40);
+    const flop = room.events.find((event) => event.eventType === 'flop_dealt');
+    expect(flop.payload.collectedBets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ amount:20 })
+    ]));
+  });
+
+  it('marks an uncontested settlement and does not publish the winner hand to the folded opponent', () => {
+    const { service, room } = setup(2);
+    service.startHand(room.id, 'u0');
+    const folding = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    act(service, room, folding.userId, 'fold');
+
+    const settled = room.events.findLast((event) => event.eventType === 'texas_hand_settled');
+    const winner = settled.payload.players.find((player) => player.payout > 0);
+    expect(settled.payload.uncontested).toBe(true);
+    expect(service.publicEvent(room, settled, folding.userId).payload.players.find((player) => player.userId === winner.userId)).not.toHaveProperty('holeCards');
+    expect(service.snapshot(room.id, folding.userId).players.find((player) => player.userId === winner.userId)).not.toHaveProperty('holeCards');
   });
 
   it('runs out the board after all players are all-in and waits for manual next hand', () => {

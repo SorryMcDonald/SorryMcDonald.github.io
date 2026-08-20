@@ -963,7 +963,7 @@ document.querySelectorAll('[data-nav]').forEach((button) => button.addEventListe
   }
   if (destination === 'table' || destination === 'lobby' || destination === 'rooms' || destination === 'zjh') {
     showTableView();
-    setActiveNav(destination === 'table' ? 'zjh' : destination);
+    setActiveNav(destination);
     if (destination !== 'table' && destination !== 'zjh' && !state.room) {
       renderLobby();
       loadRoomList();

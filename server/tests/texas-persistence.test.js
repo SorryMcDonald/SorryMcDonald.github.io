@@ -68,6 +68,38 @@ describe('Texas PostgreSQL persistence contract',() => {
     expect(room.pendingLedger).toHaveLength(0);
   });
 
+  it('serializes JSONB arrays before passing them to node-postgres',async() => {
+    const users=new Map([
+      ['u1',{ id:'u1',nickname:'JSON甲',beans:100000,wins:0,losses:0 }],
+      ['u2',{ id:'u2',nickname:'JSON乙',beans:100000,wins:0,losses:0 }]
+    ]);
+    const service=new TexasService({ store:{ users,banners:[] } });
+    const room=service.createRoom('u1',{ buyIn:1000 });
+    service.joinRoom(room.id,'u2',{ buyIn:1000 });
+    service.startHand(room.id,'u1');
+    const actor=[...room.players.values()].find((player) => player.seat===room.currentTurn);
+    service.action(room.id,actor.userId,{ type:'fold',handId:room.hand.id,version:room.version,actionSeq:1,clientActionId:'jsonb-fold-action' });
+
+    const db=fakeDb();
+    await createTexasPersistence({ db,service }).flushRoom(room.id,-1,0);
+    const handQuery=db.queries.find((query) => /INSERT INTO texas_hands/i.test(query.text));
+    const holeCardQueries=db.queries.filter((query) => /INSERT INTO texas_hole_cards/i.test(query.text));
+    const potQueries=db.queries.filter((query) => /INSERT INTO texas_pots/i.test(query.text));
+    const jsonbValues=[
+      handQuery.values[5],
+      ...holeCardQueries.map((query) => query.values[2]),
+      ...potQueries.flatMap((query) => [query.values[3],query.values[4]])
+    ];
+
+    expect(holeCardQueries).toHaveLength(2);
+    expect(potQueries).toHaveLength(1);
+    for (const value of jsonbValues) {
+      expect(typeof value).toBe('string');
+      expect(() => JSON.parse(value)).not.toThrow();
+      expect(Array.isArray(JSON.parse(value))).toBe(true);
+    }
+  });
+
   it('deletes a reclaimed room and its cascading records in one transaction',async() => {
     const users=new Map([['u1',{ id:'u1',nickname:'回收玩家',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });

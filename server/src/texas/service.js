@@ -41,6 +41,9 @@ function takeChips(room, player, amount) {
 }
 
 function revealStreet(room, street) {
+  const collectedBets = handPlayers(room)
+    .filter((player) => numeric(player.streetBet) > 0)
+    .map((player) => ({ userId:player.userId, seat:player.seat, amount:numeric(player.streetBet) }));
   room.deck.pop();
   const count = street === 'flop' ? 3 : 1;
   room.board.push(...room.deck.splice(-count).reverse());
@@ -53,7 +56,7 @@ function revealStreet(room, street) {
     player.canRaise = true;
   }
   room.currentTurn = nextActionSeat(room, room.dealerSeat);
-  appendEvent(room, `${street}_dealt`, { board: room.board });
+  appendEvent(room, `${street}_dealt`, { board: room.board, collectedBets, pot:room.pot });
 }
 
 function cashOut(room, player, user, reason = 'leave') {
@@ -344,6 +347,7 @@ export class TexasService {
   settle(room) {
     if (room.status === 'settled' || !room.hand) return room;
     if (contenders(room).length > 1 && room.board.length < 5) return this.runoutAndSettle(room);
+    const uncontested = contenders(room).length === 1;
     for (const player of contenders(room)) {
       const availableCards = [...player.holeCards, ...room.board];
       player.evaluation = availableCards.length >= 5 ? evaluateTexasHand(availableCards) : null;
@@ -358,12 +362,12 @@ export class TexasService {
       const user = this.user(player.userId);
       if (net > 0) user.wins = numeric(user.wins) + 1;
       else if (net < 0) user.losses = numeric(user.losses) + 1;
-      results.push({ userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
+      results.push({ playerId:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
     }
     room.status = 'settled'; room.currentTurn = -1; room.currentBet = 0; room.pot = 0;
     room.turnStartedAt = null; room.turnDeadlineAt = null;
-    room.hand.settledAt = new Date().toISOString(); room.hand.results = results;
-    appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results });
+    room.hand.settledAt = new Date().toISOString(); room.hand.results = results; room.hand.uncontested = uncontested;
+    appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results, uncontested });
     for (const player of [...room.players.values()].filter((value) => value.pendingLeave)) cashOut(room, player, this.user(player.userId), 'after_hand');
     return room;
   }
@@ -426,14 +430,19 @@ export class TexasService {
     const own = activePlayers(room).find((player) => player.userId === userId);
     if (!spectator && !own) throw httpError(403, '请先加入房间或申请观战');
     const settled = room.status === 'settled';
+    const uncontested = settled && Boolean(room.hand?.uncontested);
     const players = activePlayers(room).map((player) => {
-      const showCards = player.userId === userId || (settled && !player.folded) || spectator;
-      return {
+      const showCards = player.userId === userId || (!uncontested && ((settled && !player.folded) || spectator));
+      const result = {
         id:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, stack:player.stack,
         inHand:player.inHand, waiting:player.waiting, folded:player.folded, allIn:player.allIn, pendingLeave:player.pendingLeave,
         streetBet:player.streetBet, totalContribution:player.totalContribution, actionSeq:player.actionSeq, lastAction:player.lastAction,
-        holeCards:showCards ? player.holeCards : undefined, handType:showCards && player.evaluation ? player.evaluation.name : undefined
       };
+      if (showCards) {
+        result.holeCards = player.holeCards;
+        if (player.evaluation) result.handType = player.evaluation.name;
+      }
+      return result;
     });
     return {
       id:room.id, code:room.code, status:room.status, hostUserId:room.hostUserId, version:room.version,
@@ -451,9 +460,12 @@ export class TexasService {
   publicEvent(room, event, userId) {
     if (event.eventType !== 'texas_hand_settled') return event;
     const spectator = room.spectators.has(userId);
+    const uncontested = Boolean(event.payload.uncontested);
     return { ...event, payload:{ ...event.payload, players:event.payload.players.map((player) => {
-      const showCards = !player.folded || player.userId === userId || spectator;
-      return { ...player, holeCards:showCards ? player.holeCards : undefined, bestCards:showCards ? player.bestCards : undefined, handType:showCards ? player.handType : undefined };
+      const showCards = player.userId === userId || (!uncontested && (!player.folded || spectator));
+      if (showCards) return { ...player };
+      const { holeCards, bestCards, handType, ...publicPlayer } = player;
+      return publicPlayer;
     }) } };
   }
 
