@@ -362,27 +362,46 @@ export class TexasService {
     if (room.status === 'settled' || !room.hand) return room;
     if (contenders(room).length > 1 && room.board.length < 5) return this.runoutAndSettle(room);
     const uncontested = contenders(room).length === 1;
+    const handPlayersBefore = handPlayers(room);
+    const contributionTotal = handPlayersBefore.reduce((sum, player) => sum + numeric(player.totalContribution), 0);
+    const tableTotalBefore = handPlayersBefore.reduce((sum, player) => sum + userBeans(this.user(player.userId)) + numeric(player.stack), 0);
+    if (numeric(room.pot) !== contributionTotal) throw new Error(`德州结算池子与玩家贡献不一致: pot=${room.pot}, contributed=${contributionTotal}`);
     for (const player of contenders(room)) {
       const availableCards = [...player.holeCards, ...room.board];
       player.evaluation = availableCards.length >= 5 ? evaluateTexasHand(availableCards) : null;
     }
-    const { payouts, pots } = calculateTexasPots(handPlayers(room), room.dealerSeat);
+    const { payouts, pots } = calculateTexasPots(handPlayersBefore, room.dealerSeat);
     room.pots = pots;
     const results = [];
-    for (const player of handPlayers(room)) {
+    for (const player of handPlayersBefore) {
       const payout = numeric(payouts[player.id]);
       player.stack += payout;
       const net = payout - player.totalContribution;
       const user = this.user(player.userId);
       if (!room.tournament && net > 0) user.wins = numeric(user.wins) + 1;
       else if (!room.tournament && net < 0) user.losses = numeric(user.losses) + 1;
-      results.push({ playerId:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
+      results.push({ playerId:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat,
+        payout, net, stack:player.stack, accountBeans:userBeans(user), totalBeans:userBeans(user) + player.stack,
+        folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
     }
     room.status = 'settled'; room.currentTurn = -1; room.currentBet = 0; room.pot = 0;
     room.turnStartedAt = null; room.turnDeadlineAt = null;
-    room.hand.settledAt = new Date().toISOString(); room.hand.results = results; room.hand.uncontested = uncontested;
-    appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results, uncontested });
+    room.hand.settledAt = new Date().toISOString(); room.hand.uncontested = uncontested;
     for (const player of [...room.players.values()].filter((value) => value.pendingLeave)) cashOut(room, player, this.user(player.userId), 'after_hand');
+    for (const result of results) {
+      const player = room.players.get(result.playerId);
+      const user = this.user(result.userId);
+      result.stack = numeric(player?.stack);
+      result.accountBeans = userBeans(user);
+      result.totalBeans = result.accountBeans + result.stack;
+      result.beans = result.totalBeans;
+    }
+    const tableTotalAfter = handPlayersBefore.reduce((sum, player) => sum + userBeans(this.user(player.userId)) + numeric(player.stack), 0);
+    if (tableTotalAfter !== tableTotalBefore) {
+      throw new Error(`德州结算账户与牌桌筹码不守恒: before=${tableTotalBefore}, after=${tableTotalAfter}`);
+    }
+    room.hand.results = results;
+    appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results, uncontested });
     return room;
   }
 
@@ -495,6 +514,7 @@ export class TexasService {
     if (!spectator && !own) throw httpError(403, '请先加入房间或申请观战');
     const settled = room.status === 'settled';
     const uncontested = settled && Boolean(room.hand?.uncontested);
+    const settledResults = new Map((room.hand?.results ?? []).map((result) => [result.playerId, result]));
     const players = activePlayers(room).map((player) => {
       const showCards = player.userId === userId || (!uncontested && ((settled && !player.folded) || spectator));
       const result = {
@@ -502,6 +522,7 @@ export class TexasService {
         inHand:player.inHand, waiting:player.waiting, folded:player.folded, allIn:player.allIn, pendingLeave:player.pendingLeave,
         streetBet:player.streetBet, totalContribution:player.totalContribution, actionSeq:player.actionSeq, lastAction:player.lastAction,
       };
+      if (settledResults.has(player.id)) result.settlementBeans = Number(settledResults.get(player.id).totalBeans ?? 0);
       if (showCards) {
         result.holeCards = player.holeCards;
         if (player.evaluation) result.handType = player.evaluation.name;

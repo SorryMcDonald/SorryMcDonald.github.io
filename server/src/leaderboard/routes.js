@@ -17,7 +17,7 @@ export function registerLeaderboardRoutes(app, options = {}) {
   app.decorate('banners', store.banners);
   app.get('/api/leaderboards', async (request, reply) => {
     if (!request.user) return reply.code(401).send({ error: '需要登录' });
-    const kind = ['wealth', 'wins', 'losses'].includes(request.query?.kind) ? request.query.kind : 'wins';
+    const kind = ['wealth', 'wins', 'losses', 'refills'].includes(request.query?.kind) ? request.query.kind : 'wins';
     const titles = resolveUserTitles(store.users.values());
     return { kind, entries: rankUsers(store.users.values(), kind, request.query?.limit).map((entry) => ({ ...entry, titles: titles.get(entry.id) ?? [], title: (titles.get(entry.id) ?? [entry.title]).filter(Boolean)[0] ?? '' })) };
   });
@@ -34,10 +34,11 @@ export function registerLeaderboardRoutes(app, options = {}) {
       if (user.last_zero_generation !== null && user.last_zero_generation !== undefined && Number(user.last_zero_generation) === generation) return reply.code(409).send({ error: '本次归零已经领取过补给' });
       const beforeBannerCount = store.banners.length;
       const beforeRanking = snapshotRanking(store.users.values());
-      const previous = { beans: user.beans, lastZeroGeneration: user.last_zero_generation };
+      const previous = { beans: user.beans, lastZeroGeneration: user.last_zero_generation, refillCount: user.refill_count };
       const fixed = appendBanner(store, 'economy', `${user.nickname}：${confirmationText}！`, { userId: user.id, amount: refillAmount });
       user.beans = Number(user.beans ?? 0) + refillAmount;
       user.last_zero_generation = generation;
+      user.refill_count = Number(user.refill_count ?? 0) + 1;
       const rankingBanners = appendRankingChanges(store, beforeRanking, snapshotRanking(store.users.values()));
       const insertedBanners = [fixed, ...rankingBanners];
       try {
@@ -45,6 +46,7 @@ export function registerLeaderboardRoutes(app, options = {}) {
       } catch (error) {
         user.beans = previous.beans;
         user.last_zero_generation = previous.lastZeroGeneration;
+        user.refill_count = previous.refillCount;
         for (const banner of insertedBanners) {
           const index = store.banners.indexOf(banner);
           if (index >= 0) store.banners.splice(index, 1);

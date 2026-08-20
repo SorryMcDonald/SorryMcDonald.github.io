@@ -553,6 +553,9 @@ export class RoomService {
     room.round.idempotency = true;
     const beforeRanking = snapshotRanking(this.store.users.values());
     const players = roundPlayers(room);
+    const contributionTotal = players.reduce((sum, player) => sum + Number(player.totalContribution ?? 0), 0);
+    const accountTotalBefore = players.reduce((sum, player) => sum + userBeans(this.user(player.userId)), 0);
+    if (Number(room.pot) !== contributionTotal) throw new Error(`炸金花结算池子与玩家贡献不一致: pot=${room.pot}, contributed=${contributionTotal}`);
     const payouts = calculateSidePotPayouts(players);
     const results = [];
     for (const player of players) {
@@ -580,6 +583,12 @@ export class RoomService {
       if (!room.tournament && result.net > 0) user.wins = Number(user.wins ?? 0) + 1;
       else if (!room.tournament && result.net < 0) user.losses = Number(user.losses ?? 0) + 1;
     }
+    if (!room.tournament) {
+      const accountTotalAfter = players.reduce((sum, player) => sum + userBeans(this.user(player.userId)), 0);
+      if (accountTotalAfter !== accountTotalBefore + contributionTotal) {
+        throw new Error(`炸金花结算账户不守恒: before=${accountTotalBefore}, contributed=${contributionTotal}, after=${accountTotalAfter}`);
+      }
+    }
     if (!room.tournament) appendRankingChanges(this.store, beforeRanking, snapshotRanking(this.store.users.values()));
     appendEvent(room, 'round_settled', {
       winnerUserId: winner?.userId ?? null,
@@ -588,9 +597,10 @@ export class RoomService {
         userId: result.userId,
         seat: result.seat,
         nickname: result.nickname,
-        payout: result.payout,
-        net: result.net,
-        folded: result.folded,
+         payout: result.payout,
+         net: result.net,
+         beans: result.beans,
+         folded: result.folded,
         cards: result.cards,
         handType: result.handType
       }))

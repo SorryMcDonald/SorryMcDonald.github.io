@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>斗地主 · 牌局</title><link rel="stylesheet" href="/doudizhu.css">
+</head>
+<body data-game="doudizhu">
+  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">P</span><strong>牌局</strong><small>共享账号与豆子</small></a><nav><a href="/">炸金花</a><a href="/dezhou.html">德州扑克</a><a class="active" href="/doudizhu.html">斗地主</a></nav><span id="accountLabel">未登录</span></header><div id="globalTicker" class="ticker" aria-live="polite"></div>
+  <main>
+    <section id="authView" class="panel auth"><h1>斗地主 · 联机</h1><p>与炸金花、德州共用同一账号和 PostgreSQL 豆子账户。</p><form id="authForm"><label>邮箱<input id="emailInput" type="email" required></label><label id="nicknameField" hidden>昵称<input id="nicknameInput" maxlength="24"></label><label>密码<input id="passwordInput" type="password" minlength="8" required></label><button id="authSubmit" type="submit">登录</button><button id="authModeToggle" type="button" class="link-button">注册新账号</button><p id="authError" class="error"></p></form></section>
+    <section id="lobbyView" class="panel" hidden><div class="section-head"><div><h1>斗地主大厅</h1><p>共享账户基础豆：100,000。底分越高，结算倍率越高。</p></div><button id="logoutButton" class="ghost">退出登录</button></div><div class="create-row"><label>人数上限<select id="maxPlayers"><option>2</option><option selected>3</option><option>4</option></select></label><label>房间底分<select id="baseScore"><option>10</option><option>50</option><option selected>100</option><option>200</option><option>500</option><option>1000</option></select></label><button id="createButton">创建斗地主房间</button></div><div id="rooms" class="rooms"></div></section>
+    <section id="roomView" class="panel" hidden><div class="section-head"><div><p class="eyebrow">DOUDIZHU ROOM</p><h1>房间 <span id="roomCode"></span></h1><p id="roomStatus"></p></div><button id="leaveButton" class="danger">退出房间</button></div><div id="players" class="players"></div><div id="gamePanel" class="game-panel"></div><div id="hand" class="hand"></div><p id="roomError" class="error"></p></section>
+  </main><script type="module" src="/doudizhu.js"></script>
+</body>
+</html>

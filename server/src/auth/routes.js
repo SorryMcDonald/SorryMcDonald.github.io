@@ -13,7 +13,7 @@ function httpError(statusCode, message) { const error = new Error(message); erro
 
 function mapUser(row, titles = []) {
   if (!row) return null;
-  return { id: row.id, email: row.email, nickname: row.nickname, beans: Number(row.beans ?? 0), wins: Number(row.wins ?? row.win_count ?? 0), losses: Number(row.losses ?? row.loss_count ?? 0), musicEnabled: row.music_enabled ?? row.musicEnabled ?? true, effectsEnabled: row.effects_enabled ?? row.effectsEnabled ?? true, motionMode: row.animation_mode ?? row.motion_mode ?? row.motionMode ?? 'light', titles };
+  return { id: row.id, email: row.email, nickname: row.nickname, beans: Number(row.beans ?? 0), wins: Number(row.wins ?? row.win_count ?? 0), losses: Number(row.losses ?? row.loss_count ?? 0), refillCount: Number(row.refill_count ?? row.refillCount ?? 0), musicEnabled: row.music_enabled ?? row.musicEnabled ?? true, effectsEnabled: row.effects_enabled ?? row.effectsEnabled ?? true, motionMode: row.animation_mode ?? row.motion_mode ?? row.motionMode ?? 'light', titles };
 }
 
 async function dbQuery(db, text, values = []) { return db.query(text, values); }
@@ -47,7 +47,7 @@ export function registerAuthRoutes(app, options = {}) {
         VALUES ($1, $2, $3, $4) RETURNING *`, [input.email, input.passwordHash, input.nickname, STARTING_BEANS]);
       return result.rows[0];
     }
-    const user = { id: randomUUID(), email: input.email, password_hash: input.passwordHash, nickname: input.nickname, beans: STARTING_BEANS, wins: 0, losses: 0, music_enabled: true, motion_mode: 'light' };
+    const user = { id: randomUUID(), email: input.email, password_hash: input.passwordHash, nickname: input.nickname, beans: STARTING_BEANS, wins: 0, losses: 0, refill_count: 0, music_enabled: true, motion_mode: 'light' };
     store.users.set(user.id, user);
     return user;
   }

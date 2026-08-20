@@ -109,6 +109,7 @@ function renderPlayerSeat(slot, start) {
   const chips = document.createElement('div'); chips.className = 'player-stack';
   const stackValue = document.createElement('span'); stackValue.className = 'stack-value'; stackValue.textContent = money(player.stack);
   chips.append(stackValue, document.createTextNode(' 筹码'));
+  if (player.settlementBeans !== undefined) chips.append(document.createTextNode(` · 结算后 ${money(player.settlementBeans)} 豆`));
   const badges = document.createElement('div'); badges.className = 'player-badges';
   if (player.seat === state.room.dealerSeat) badges.append(badge('D'));
   if (player.seat === start.smallBlindSeat) badges.append(badge('SB','blind'));
@@ -376,6 +377,7 @@ function renderUser() {
   if (!state.user) return;
   state.musicEnabled = state.user.musicEnabled ?? true; state.effectsEnabled = state.user.effectsEnabled ?? true; state.motionMode = state.user.motionMode ?? 'light';
   document.body.dataset.motion = state.motionMode; text('accountLabel',`${state.user.nickname} · ${money(state.user.beans)} 豆`); text('accountTitles',(state.user.titles ?? []).join(' · ')); $('refillButton').hidden = Number(state.user.beans) !== 0;
+  connectGlobalWs();
 }
 async function refreshUser() {
   try {
@@ -414,6 +416,16 @@ function renderGlobalBanner(data) {
   state.seenBanners.add(key);
   showBanner(data.banner.message);
 }
+let globalWs = null;
+function connectGlobalWs() {
+  if (!state.user || globalWs && [0, 1].includes(globalWs.readyState)) return;
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+  globalWs = socket;
+  socket.onopen = () => socket.send(JSON.stringify({ type:'subscribe_global' }));
+  socket.onmessage = (message) => { try { renderGlobalBanner(JSON.parse(message.data)); } catch {} };
+  socket.onclose = () => { if (globalWs === socket) globalWs = null; if (state.user) window.setTimeout(connectGlobalWs,2000); };
+}
 
 function openJoin(room = {}) {
   $('joinRoomId').value = room.id ?? ''; $('joinCodeInput').value = room.code ?? ''; $('joinBuyInInput').min = String(room.minBuyIn ?? 1); $('joinBuyInInput').max = String(room.maxBuyIn ?? 100000);
@@ -439,21 +451,21 @@ function openRaise() {
 }
 
 async function loadLeaderboard(kind) {
-  state.leaderboardKind = kind; const data = await api(`/api/leaderboards?kind=${encodeURIComponent(kind)}`);
+  state.leaderboardKind = kind; const heading = document.querySelector('.leaderboard-head'); const columns = heading?.querySelectorAll('span'); if (columns?.[1]) columns[1].textContent = kind === 'refills' ? '领取次数' : '对局胜负'; if (columns?.[2]) columns[2].textContent = kind === 'refills' ? '次数' : '余额'; const data = await api(`/api/leaderboards?kind=${encodeURIComponent(kind)}`);
   document.querySelectorAll('[data-rank]').forEach((button) => button.classList.toggle('active',button.dataset.rank === kind));
   const entries = data.entries ?? []; const podium = $('leaderboardPodium'); podium.replaceChildren();
   entries.slice(0,3).forEach((entry,index) => {
     const card = document.createElement('div'); card.className = 'podium-card'; const rank = document.createElement('strong'); rank.className = 'podium-rank'; rank.textContent = `0${index + 1}`;
     const body = document.createElement('div'); const name = document.createElement('span'); name.className = 'podium-name'; name.textContent = entry.nickname;
-    const beans = document.createElement('span'); beans.className = 'podium-beans'; beans.textContent = `${money(entry.beans)} 豆 · ${entry.title ?? ''}`; body.append(name,beans); card.append(rank,body); podium.append(card);
+    const beans = document.createElement('span'); beans.className = 'podium-beans'; beans.textContent = state.leaderboardKind === 'refills' ? `${money(entry.refillCount ?? 0)} 次` : `${money(entry.beans)} 豆 · ${entry.title ?? ''}`; body.append(name,beans); card.append(rank,body); podium.append(card);
   });
   const list = $('leaderboardList'); list.replaceChildren();
   entries.forEach((entry) => {
     const row = document.createElement('div'); row.className = 'leader-row'; const identity = document.createElement('div'); identity.className = 'leader-identity';
     const rank = document.createElement('strong'); rank.className = 'leader-rank'; rank.textContent = entry.rank; const player = document.createElement('div');
     const name = document.createElement('strong'); name.textContent = entry.nickname; const title = document.createElement('span'); title.className = 'leader-title'; title.textContent = (entry.titles ?? [entry.title]).filter(Boolean).join(' · ');
-    player.append(name,title); identity.append(rank,player); const record = document.createElement('div'); record.className = 'leader-record'; record.textContent = `${entry.wins} 胜 / ${entry.losses} 负`;
-    const beans = document.createElement('div'); beans.className = 'leader-beans'; beans.textContent = `${money(entry.beans)} 豆`; row.append(identity,record,beans); list.append(row);
+    player.append(name,title); identity.append(rank,player); const record = document.createElement('div'); record.className = 'leader-record'; record.textContent = state.leaderboardKind === 'refills' ? `${money(entry.refillCount ?? 0)} 次` : `${entry.wins} 胜 / ${entry.losses} 负`;
+    const beans = document.createElement('div'); beans.className = 'leader-beans'; beans.textContent = state.leaderboardKind === 'refills' ? `${money(entry.refillCount ?? 0)} 次` : `${money(entry.beans)} 豆`; row.append(identity,record,beans); list.append(row);
   });
 }
 

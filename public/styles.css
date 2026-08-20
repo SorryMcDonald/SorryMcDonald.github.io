@@ -293,8 +293,314 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   .modal-panel{padding:24px 18px}
 }
 
+/* The 100% desktop density was too small for normal play. Keep the layout
+   responsive while matching the comfortable reading size users reached with
+   browser zoom, without applying a page-wide zoom that causes overflow. */
+@media(min-width:1101px){
+  body{font-size:17px}
+  .app-shell{max-width:1600px;padding-left:32px;padding-right:32px}
+  .topbar{min-height:80px;margin-left:-32px;margin-right:-32px;padding-left:32px;padding-right:32px}
+  .brand-mark{width:42px;height:42px;margin-right:11px;font-size:28px}
+  .brand-name{font-size:25px}
+  .primary-nav{margin-left:48px;gap:4px}
+  .nav-link{min-height:80px;padding:0 16px;font-size:15px}
+  .top-actions{gap:14px}
+  .top-settings{width:40px;height:40px;font-size:22px}
+  .account-label{font-size:15px}
+  .ticker{height:38px;margin-left:-32px;margin-right:-32px;padding-left:32px;padding-right:32px;font-size:14px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:44px;padding:10px 16px;font-size:15px}
+  .table-toolbar{min-height:86px;padding:15px 0 12px}
+  .room-heading{gap:14px}
+  .room-heading strong{font-size:22px}
+  .room-lobby{padding-top:34px}
+  .room-lobby-head h2{font-size:28px}
+  .room-lobby-head p{font-size:14px}
+  .room-row{grid-template-columns:minmax(220px,1.2fr) minmax(220px,1fr) auto;min-height:82px;padding:15px 18px;gap:20px}
+  .room-primary strong{font-size:19px}
+  .room-primary span,.room-detail{font-size:14px}
+  .table-layout{grid-template-columns:250px minmax(0,1fr) 270px;grid-template-rows:minmax(560px,1fr) auto;min-height:calc(100vh - 174px)}
+  .felt{width:calc(100% - 54px);margin:32px auto 16px;border-width:12px}
+  .felt-center{top:48%}
+  .pot-label{padding:6px 22px 0;font-size:15px}
+  .pot-value{padding:0 22px 6px;font-size:23px}
+  .player-seat{width:24%;max-width:175px;min-width:130px}
+  .player-name{padding:6px 12px;font-size:15px}
+  .player-meta{font-size:12px}
+  .title-chip{font-size:10px;line-height:16px}
+  .cards{height:72px;min-height:72px;gap:5px}
+  .card{width:50px}
+  .card-rank{font-size:14px}
+  .card-suit{font-size:12px}
+  .card-pip{font-size:31px}
+  .action-panel{min-width:min(95%,620px);padding:12px 16px 14px;margin-bottom:30px}
+  .action-summary{min-height:30px;font-size:13px}
+  .action-grid{gap:8px}
+  .action-grid button{min-width:88px}
+  .round-panel,.chat-panel{padding:18px 16px}
+  .panel-heading h2{font-size:16px}
+  .round-feed,.chat-messages{height:calc(100vh - 270px);font-size:13px}
+  .page-heading{padding:34px 0 22px}
+  .page-heading h1{font-size:32px}
+  .leaderboard-tabs{margin-top:32px;gap:4px}
+  .leaderboard-head{font-size:13px}
+  .leader-row{min-height:76px;padding:12px 18px}
+  .leader-record,.leader-beans{font-size:14px}
+}
+
+@media(min-width:801px) and (max-width:1100px){
+  body{font-size:16px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:40px;padding:9px 14px;font-size:14px}
+  .player-name{font-size:13px}
+  .player-meta{font-size:11px}
+  .card{width:46px}
+  .round-feed,.chat-messages{font-size:12px}
+}
+
+/* Larger default desktop density so normal 100% zoom remains readable. */
+@media(min-width:801px){
+  body{font-size:18px}
+  .app-shell{width:min(96vw,1600px)}
+  .topbar{min-height:78px;padding:14px 4px 10px}
+  .brand-mark{width:40px;height:40px;margin-right:12px;font-size:22px}
+  .brand-name{font-size:24px;letter-spacing:4px}
+  .brand-sub{font-size:15px}
+  .top-actions,.toolbar-actions{gap:11px}
+  .account-label{font-size:16px}
+  .account-titles{gap:5px}
+  .ticker{height:38px;font-size:16px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:46px;padding:11px 18px;font-size:16px}
+  .icon-button{width:40px;height:40px;font-size:27px}
+  .auth-view{padding:58px 0 42px}
+  .auth-copy h1{font-size:35px;letter-spacing:7px}
+  .auth-copy p{font-size:16px}
+  .auth-panel,.modal-panel{width:min(94vw,500px);margin-top:42px;padding:36px 42px 32px}
+  .auth-panel-head h2{font-size:27px}
+  .auth-panel-head p{font-size:16px;margin-bottom:22px}
+  .auth-panel label,.modal-panel>label{margin-top:17px;font-size:16px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:50px;margin-top:8px;padding:11px 14px;font-size:16px}
+  .auth-submit,.modal-submit{margin-top:23px;min-height:50px}
+  .auth-switch,.error-text{font-size:15px}
+  .table-toolbar{padding:16px 0 12px}
+  .room-heading{gap:13px;min-height:50px}
+  .room-heading strong{font-size:25px}
+  .eyebrow{font-size:13px}
+  .status-pill,.role-label{padding:5px 11px;font-size:13px}
+  .room-lobby{padding:20px 0 32px}
+  .room-lobby-head{padding:18px 6px}
+  .room-lobby-head h2{font-size:25px}
+  .room-lobby-head p{font-size:15px}
+  .room-row{min-height:82px;padding:14px 16px;gap:20px}
+  .room-primary strong{font-size:19px}
+  .room-primary span,.room-detail{font-size:14px}
+  .felt{border-width:12px}
+  .pot-label{font-size:21px}
+  .pot-value{font-size:28px}
+  .compare-notice{font-size:14px}
+  .player-seat{max-width:205px;min-width:150px}
+  .player-name{padding:6px 14px;font-size:16px}
+  .title-chip{padding:2px 8px;font-size:11px;line-height:16px}
+  .player-meta{font-size:13px}
+  .cards{height:76px;min-height:76px;gap:5px}
+  .card{width:54px}
+  .card-rank{font-size:14px}
+  .card-suit{font-size:12px}
+  .card-pip{font-size:33px}
+  .turn-countdown{width:44px;height:30px;font-size:13px}
+  .action-panel{margin-top:14px;padding:12px 16px 16px}
+  .action-summary{min-height:34px;gap:15px;font-size:14px}
+  .action-grid{gap:9px}
+  .action-grid button{min-width:94px}
+  .table-info{gap:14px;margin-top:14px}
+  .round-panel,.chat-panel{padding:14px 16px}
+  .panel-heading h2{font-size:17px}
+  .panel-heading span{font-size:13px}
+  .round-feed,.chat-messages{height:118px;font-size:14px}
+  #chatForm{gap:9px;margin-top:9px}
+  #chatInput{height:46px}
+  #chatSendButton{min-height:46px;padding:10px 16px}
+  .page-heading{padding:38px 0 24px}
+  .page-heading h1{font-size:35px}
+  .leaderboard-tabs{gap:10px}
+  .leaderboard-head{padding:16px 18px 9px;font-size:14px}
+  .leader-row{min-height:78px;padding:12px 18px}
+  .leader-rank{font-size:24px}
+  .leader-record,.leader-beans{font-size:15px}
+  footer{padding:20px 0;font-size:13px}
+  .modal-panel .panel-heading h2{font-size:22px}
+  .modal-note,.raise-preview{font-size:15px}
+  .setting-row{padding:15px 0;font-size:16px}
+}
+
+@media(min-width:801px) and (max-width:1100px){
+  .topbar{min-height:72px}
+  .brand-name{font-size:21px}
+  .brand-sub{display:none}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:42px;padding:9px 14px;font-size:15px}
+  .auth-panel,.modal-panel{width:min(94vw,460px);padding:32px 34px 28px}
+  .auth-copy h1{font-size:31px}
+  .table-info{grid-template-columns:1fr 1fr}
+  .player-seat{min-width:128px}
+  .card{width:48px}
+}
+
 @media(prefers-reduced-motion:reduce){
   *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
+/* Final density overrides for the active card-room visual system. */
+@media(min-width:1101px){
+  body{font-size:18px}
+  .app-shell{max-width:1600px;padding-left:36px;padding-right:36px}
+  .topbar{min-height:84px;margin-left:-36px;margin-right:-36px;padding-left:36px;padding-right:36px}
+  .brand-mark{width:44px;height:44px;margin-right:12px;font-size:29px}
+  .brand-name{font-size:26px}
+  .primary-nav{margin-left:48px;gap:4px}
+  .nav-link{min-height:84px;padding:0 17px;font-size:16px}
+  .top-actions{gap:14px}
+  .top-settings{width:42px;height:42px;font-size:22px}
+  .account-label{font-size:16px}
+  .ticker{height:42px;margin-left:-36px;margin-right:-36px;padding-left:36px;padding-right:36px;font-size:15px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:48px;padding:11px 18px;font-size:16px}
+  .auth-copy h1{font-size:35px;letter-spacing:7px}
+  .auth-copy p{font-size:16px}
+  .auth-panel,.modal-panel{width:min(94vw,500px);margin-top:42px;padding:36px 42px 32px}
+  .auth-panel-head h2{font-size:27px}
+  .auth-panel-head p{font-size:16px;margin-bottom:22px}
+  .auth-panel label,.modal-panel>label{margin-top:17px;font-size:16px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:50px;margin-top:8px;padding:11px 14px;font-size:16px}
+  .auth-submit,.modal-submit{margin-top:23px;min-height:50px}
+  .auth-switch,.error-text{font-size:15px}
+  .table-toolbar{min-height:92px;padding:17px 0 13px}
+  .room-heading{gap:14px}
+  .room-heading strong{font-size:25px}
+  .room-lobby{padding-top:34px}
+  .room-lobby-head h2{font-size:28px}
+  .room-lobby-head p{font-size:14px}
+  .room-row{grid-template-columns:minmax(220px,1.2fr) minmax(220px,1fr) auto;min-height:82px;padding:15px 18px;gap:20px}
+  .room-primary strong{font-size:19px}
+  .room-primary span,.room-detail{font-size:14px}
+  .table-layout{grid-template-columns:250px minmax(0,1fr) 270px;grid-template-rows:minmax(560px,1fr) auto;min-height:calc(100vh - 174px)}
+  .felt{width:calc(100% - 54px);margin:32px auto 16px;border-width:12px}
+  .felt-center{top:48%}
+  .pot-label{padding:6px 22px 0;font-size:21px}
+  .pot-value{padding:0 22px 6px;font-size:28px}
+  .player-seat{width:24%;max-width:205px;min-width:150px}
+  .player-name{padding:7px 14px;font-size:16px}
+  .player-meta{font-size:13px}
+  .title-chip{padding:2px 8px;font-size:11px;line-height:16px}
+  .cards{height:76px;min-height:76px;gap:5px}
+  .card{width:54px}
+  .card-rank{font-size:14px}
+  .card-suit{font-size:12px}
+  .card-pip{font-size:31px}
+  .action-panel{min-width:min(95%,680px);padding:12px 16px 16px;margin-bottom:30px}
+  .action-summary{min-height:34px;gap:15px;font-size:14px}
+  .action-grid{gap:9px}
+  .action-grid button{min-width:94px}
+  .round-panel,.chat-panel{padding:20px 18px}
+  .panel-heading h2{font-size:17px}
+  .round-feed,.chat-messages{height:calc(100vh - 288px);font-size:14px}
+  .page-heading{padding:34px 0 22px}
+  .page-heading h1{font-size:35px}
+  .leaderboard-tabs{margin-top:32px;gap:4px}
+  .leaderboard-head{font-size:13px}
+  .leader-row{min-height:78px;padding:12px 18px}
+  .leader-record,.leader-beans{font-size:15px}
+}
+@media(min-width:801px) and (max-width:1100px){
+  body{font-size:17px}
+  .topbar{min-height:74px}
+  .brand-name{font-size:21px}
+  .brand-sub{display:none}
+  .nav-link{min-height:74px;padding:0 11px;font-size:13px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:44px;padding:9px 14px;font-size:15px}
+  .auth-panel,.modal-panel{width:min(94vw,460px);padding:32px 34px 28px}
+  .auth-copy h1{font-size:31px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:48px;font-size:15px}
+  .player-name{font-size:14px}
+  .player-meta{font-size:12px}
+  .card{width:48px}
+  .round-feed,.chat-messages{font-size:13px}
+}
+
+/* Comfortable 100% browser scale: enlarge the complete play surface, not just
+   the login panel. Fixed-size table chrome needs explicit values because it
+   does not inherit the body font size. */
+@media(min-width:801px){
+  body{font-size:20px}
+  .app-shell{max-width:1680px;padding-left:40px;padding-right:40px}
+  .topbar{min-height:94px;margin-left:-40px;margin-right:-40px;padding-left:40px;padding-right:40px}
+  .brand-mark{width:50px;height:50px;margin-right:14px;font-size:32px}
+  .brand-name{font-size:30px}
+  .primary-nav{margin-left:54px;gap:5px}
+  .nav-link{min-height:94px;padding:0 19px;font-size:18px}
+  .top-settings{width:48px;height:48px;font-size:25px}
+  .account-label{font-size:18px}
+  .ticker{height:48px;margin-left:-40px;margin-right:-40px;padding-left:40px;padding-right:40px;font-size:17px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:56px;padding:13px 22px;font-size:18px}
+  .auth-view{padding:68px 0 50px}
+  .auth-copy h1{font-size:42px;letter-spacing:8px}
+  .auth-copy p{font-size:18px}
+  .auth-panel,.modal-panel{width:min(94vw,560px);margin-top:46px;padding:44px 48px 38px}
+  .auth-panel-head h2{font-size:31px}
+  .auth-panel-head p{margin-bottom:25px;font-size:18px}
+  .auth-panel label,.modal-panel>label{margin-top:19px;font-size:18px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:56px;padding:13px 16px;font-size:18px}
+  .auth-submit,.modal-submit{min-height:58px;margin-top:26px}
+  .auth-switch,.error-text{font-size:17px}
+  .table-toolbar{min-height:104px;padding:19px 0 15px}
+  .room-heading strong{font-size:29px}
+  .eyebrow{font-size:15px}
+  .status-pill,.role-label{padding:6px 13px;font-size:15px}
+  .toolbar-actions{gap:11px}
+  .room-lobby-head h2{font-size:32px}
+  .room-lobby-head p{font-size:17px}
+  .room-row{min-height:94px;padding:17px 20px}
+  .room-primary strong{font-size:22px}
+  .room-primary span,.room-detail{font-size:16px}
+  .table-layout{grid-template-columns:300px minmax(0,1fr) 330px;grid-template-rows:minmax(680px,1fr) auto;min-height:calc(100vh - 208px)}
+  .felt{width:calc(100% - 44px);margin:38px auto 20px;border-width:15px}
+  .pot-label{padding:7px 25px 0;font-size:24px}
+  .pot-value{padding:0 25px 7px;font-size:33px}
+  .compare-notice{font-size:16px}
+  .player-seat{max-width:225px;min-width:165px}
+  .player-name{padding:8px 16px;font-size:18px}
+  .player-meta{font-size:15px}
+  .title-chip{padding:3px 9px;font-size:13px;line-height:18px}
+  .cards{height:90px;min-height:90px;gap:6px}
+  .card{width:64px}
+  .card-rank{font-size:17px}
+  .card-suit{font-size:14px}
+  .card-pip{font-size:38px}
+  .action-panel{min-width:min(95%,760px);padding:15px 20px 19px;margin-bottom:34px}
+  .action-summary{min-height:38px;font-size:16px}
+  .action-grid{gap:11px}
+  .action-grid button{min-width:106px}
+  .round-panel,.chat-panel{padding:24px 22px}
+  .panel-heading h2{font-size:20px}
+  .panel-heading span{font-size:15px}
+  .round-feed,.chat-messages{height:calc(100vh - 320px);font-size:16px}
+  #chatInput{height:52px}
+  #chatSendButton{min-height:52px;padding:11px 18px}
+  .page-heading h1{font-size:40px}
+  .leaderboard-head{font-size:15px}
+  .leader-row{min-height:88px;padding:14px 20px}
+  .leader-rank{font-size:27px}
+  .leader-record,.leader-beans{font-size:17px}
+  footer{font-size:15px}
+}
+
+@media(min-width:801px) and (max-width:1100px){
+  .app-shell{padding-left:24px;padding-right:24px}
+  .topbar{min-height:82px;margin-left:-24px;margin-right:-24px;padding-left:24px;padding-right:24px}
+  .brand-mark{width:42px;height:42px;font-size:26px}
+  .brand-name{font-size:23px}
+  .primary-nav{margin-left:22px}
+  .nav-link{min-height:82px;padding:0 10px;font-size:14px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:48px;padding:10px 15px;font-size:16px}
+  .table-layout{grid-template-columns:220px minmax(0,1fr) 240px;grid-template-rows:minmax(590px,1fr) auto}
+  .player-seat{min-width:132px}
+  .card{width:52px}
 }
 
 /* Prototype visual system: a quiet card-room shell with restrained edges. */
@@ -491,4 +797,81 @@ dialog::backdrop{background:rgba(4,10,7,.78)}
   .podium-card{min-height:62px;padding:8px}
   .leaderboard-head,.leader-row{grid-template-columns:minmax(0,1fr) 86px}
   .leaderboard-head span:nth-child(2),.leader-record{display:none}
+}
+
+/* Apply the larger default density after the legacy theme declarations. */
+@media(min-width:1101px){
+  body{font-size:18px}
+  .app-shell{max-width:1600px;padding-left:36px;padding-right:36px}
+  .topbar{min-height:84px;margin-left:-36px;margin-right:-36px;padding-left:36px;padding-right:36px}
+  .brand-mark{width:44px;height:44px;margin-right:12px;font-size:29px}
+  .brand-name{font-size:26px}
+  .primary-nav{margin-left:48px;gap:4px}
+  .nav-link{min-height:84px;padding:0 17px;font-size:16px}
+  .top-actions{gap:14px}
+  .top-settings{width:42px;height:42px;font-size:22px}
+  .account-label{font-size:16px}
+  .ticker{height:42px;margin-left:-36px;margin-right:-36px;padding-left:36px;padding-right:36px;font-size:15px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:48px;padding:11px 18px;font-size:16px}
+  .auth-view{padding:62px 0 46px}
+  .auth-copy h1{font-size:35px;letter-spacing:7px}
+  .auth-copy p{font-size:16px}
+  .auth-panel,.modal-panel{width:min(94vw,500px);margin-top:42px;padding:36px 42px 32px}
+  .auth-panel-head h2{font-size:27px}
+  .auth-panel-head p{font-size:16px;margin-bottom:22px}
+  .auth-panel label,.modal-panel>label{margin-top:17px;font-size:16px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:50px;margin-top:8px;padding:11px 14px;font-size:16px}
+  .auth-submit,.modal-submit{margin-top:23px;min-height:50px}
+  .auth-switch,.error-text{font-size:15px}
+  .table-toolbar{min-height:86px;padding:15px 0 12px}
+  .room-heading{gap:14px}
+  .room-heading strong{font-size:25px}
+  .room-lobby{padding-top:34px}
+  .room-lobby-head h2{font-size:28px}
+  .room-lobby-head p{font-size:14px}
+  .room-row{grid-template-columns:minmax(220px,1.2fr) minmax(220px,1fr) auto;min-height:82px;padding:15px 18px;gap:20px}
+  .room-primary strong{font-size:19px}
+  .room-primary span,.room-detail{font-size:14px}
+  .table-layout{grid-template-columns:250px minmax(0,1fr) 270px;grid-template-rows:minmax(560px,1fr) auto;min-height:calc(100vh - 174px)}
+  .felt{width:calc(100% - 54px);margin:32px auto 16px;border-width:12px}
+  .felt-center{top:48%}
+  .pot-label{padding:6px 22px 0;font-size:21px}
+  .pot-value{padding:0 22px 6px;font-size:28px}
+  .player-seat{width:24%;max-width:205px;min-width:150px}
+  .player-name{padding:7px 14px;font-size:16px}
+  .player-meta{font-size:13px}
+  .title-chip{padding:2px 8px;font-size:11px;line-height:16px}
+  .cards{height:76px;min-height:76px;gap:5px}
+  .card{width:54px}
+  .card-rank{font-size:14px}
+  .card-suit{font-size:12px}
+  .card-pip{font-size:31px}
+  .action-panel{min-width:min(95%,680px);padding:12px 16px 16px;margin-bottom:30px}
+  .action-summary{min-height:34px;gap:15px;font-size:14px}
+  .action-grid{gap:9px}
+  .action-grid button{min-width:94px}
+  .round-panel,.chat-panel{padding:20px 18px}
+  .panel-heading h2{font-size:17px}
+  .round-feed,.chat-messages{height:calc(100vh - 288px);font-size:14px}
+  .page-heading{padding:34px 0 22px}
+  .page-heading h1{font-size:35px}
+  .leaderboard-tabs{margin-top:32px;gap:4px}
+  .leaderboard-head{font-size:13px}
+  .leader-row{min-height:78px;padding:12px 18px}
+  .leader-record,.leader-beans{font-size:15px}
+}
+@media(min-width:801px) and (max-width:1100px){
+  body{font-size:17px}
+  .topbar{min-height:74px}
+  .brand-name{font-size:21px}
+  .brand-sub{display:none}
+  .nav-link{min-height:74px;padding:0 11px;font-size:13px}
+  .primary-button,.ghost-button,.danger-button,.gold-button,.compare-button,.all-in-button,.tab-button,.compare-target-button{min-height:44px;padding:9px 14px;font-size:15px}
+  .auth-panel,.modal-panel{width:min(94vw,460px);padding:32px 34px 28px}
+  .auth-copy h1{font-size:31px}
+  .auth-panel input,.modal-panel input,.modal-panel select,#chatInput{height:48px;font-size:15px}
+  .player-name{font-size:14px}
+  .player-meta{font-size:12px}
+  .card{width:48px}
+  .round-feed,.chat-messages{font-size:13px}
 }

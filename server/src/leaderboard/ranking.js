@@ -8,6 +8,7 @@ export function titleFor(kind, rank) {
 
 function primaryKey(kind) {
   if (kind === 'wealth') return 'beans';
+  if (kind === 'refills') return 'refill_count';
   if (kind === 'losses') return 'losses';
   return 'wins';
 }
@@ -27,7 +28,8 @@ export function rankUsers(users, kind = 'wins', limit = 100) {
       beans: Number(user.beans ?? 0),
       wins: Number(user.wins ?? 0),
       losses: Number(user.losses ?? 0),
-      title: kind === 'wealth' ? '' : titleFor(kind, index + 1)
+      title: kind === 'wealth' || kind === 'refills' ? '' : titleFor(kind, index + 1),
+      refillCount: Number(user.refill_count ?? user.refillCount ?? 0)
     }));
 }
 

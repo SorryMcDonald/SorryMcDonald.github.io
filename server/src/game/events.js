@@ -22,6 +22,9 @@ export function appendEvent(room, eventType, payload = {}, audience = 'room') {
 
 export function visibleRoom(room, { userId, spectator = false, titles = new Map() } = {}) {
   const isSpectator = spectator || room.spectators.has(userId);
+  const settledBalances = room.status === 'settled'
+    ? new Map((room.lastResults ?? []).map((result) => [result.playerId ?? result.id, result.beans ?? result.balance]))
+    : new Map();
   return {
     id: room.id, code: room.code, status: room.status, hostUserId: room.hostUserId,
     version: room.version, dealerUserId: room.dealerUserId, dealerSeat: room.dealerSeat, currentTurn: room.currentTurn,
@@ -35,7 +38,8 @@ export function visibleRoom(room, { userId, spectator = false, titles = new Map(
         folded: player.folded, allIn: player.allIn, seen: player.seen, currentBet: player.currentBet,
         totalContribution: player.totalContribution, actionSeq: player.actionSeq, lastAction: player.lastAction,
         revealed: Boolean(player.revealed), mayReveal: player.userId === userId && Boolean(player.mayReveal),
-        cardCount: player.cards?.length ?? 0, titles: titles.get(player.userId) ?? []
+        cardCount: player.cards?.length ?? 0, titles: titles.get(player.userId) ?? [],
+        settledBeans: settledBalances.get(player.id) ?? null
       };
       if (visible) {
         result.cards = player.cards;

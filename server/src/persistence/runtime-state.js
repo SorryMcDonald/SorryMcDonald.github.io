@@ -23,7 +23,7 @@ function durableEvents(events) {
 }
 
 export async function hydrateStore(db) {
-  const usersResult = await db.query(`SELECT id, email, password_hash, nickname, beans, wins, losses,
+  const usersResult = await db.query(`SELECT id, email, password_hash, nickname, beans, wins, losses, refill_count,
     music_enabled, effects_enabled, animation_mode, refill_generation,
     last_zero_generation, created_at, updated_at FROM users`);
   const bannersResult = await db.query(`SELECT id, queue_name, banner_type, message, payload, created_at
@@ -74,12 +74,13 @@ async function withTransaction(db, callback) {
 
 async function persistUsers(client, users) {
   for (const user of users.values()) {
-    await client.query(`UPDATE users SET beans = $2, wins = $3, losses = $4,
-      refill_generation = $5, last_zero_generation = $6 WHERE id = $1`, [
+    await client.query(`UPDATE users SET beans = $2, wins = $3, losses = $4, refill_count = $5,
+      refill_generation = $6, last_zero_generation = $7 WHERE id = $1`, [
       user.id,
       number(user.beans),
       number(user.wins),
       number(user.losses),
+      number(user.refill_count ?? user.refillCount),
       number(user.refill_generation),
       user.last_zero_generation ?? null
     ]);

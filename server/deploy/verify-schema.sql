@@ -99,6 +99,13 @@ BEGIN
     RAISE EXCEPTION 'missing tournament indexes: %', missing_objects;
   END IF;
 
+  IF to_regclass('public.doudizhu_rooms') IS NULL THEN
+    RAISE EXCEPTION 'missing doudizhu_rooms table';
+  END IF;
+  IF to_regclass('public.users_refill_count_idx') IS NULL THEN
+    RAISE EXCEPTION 'missing users_refill_count_idx index';
+  END IF;
+
   SELECT array_agg(expected.trigger_name ORDER BY expected.trigger_name)
   INTO missing_objects
   FROM (VALUES
@@ -121,11 +128,13 @@ $verify$;
 
 SELECT json_build_object(
   'schema_ready', true,
-  'migration_level', 7,
+  'migration_level', 9,
   'texas_table_count', 9,
   'texas_index_count', 9,
   'texas_trigger_count', 4,
   'tournament_table_count', 5,
   'tournament_index_count', 3,
-  'tournament_trigger_count', 3
+  'tournament_trigger_count', 3,
+  'doudizhu_table_count', 1,
+  'refill_index_count', 1
 ) AS schema_receipt;

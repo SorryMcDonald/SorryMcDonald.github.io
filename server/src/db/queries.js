@@ -34,7 +34,7 @@ export async function getUserById(first, second) {
   const { db, value: userId } = resolveDb(first, second);
   requireDb(db);
   const result = await db.query(
-    `SELECT id, email, password_hash, nickname, beans, wins, losses,
+    `SELECT id, email, password_hash, nickname, beans, wins, losses, refill_count,
             music_enabled, effects_enabled, animation_mode,
             refill_generation, last_zero_generation, created_at, updated_at
        FROM users WHERE id = $1`,
@@ -47,7 +47,7 @@ export async function getUserByEmail(first, second) {
   const { db, value: email } = resolveDb(first, second);
   requireDb(db);
   const result = await db.query(
-    `SELECT id, email, password_hash, nickname, beans, wins, losses,
+    `SELECT id, email, password_hash, nickname, beans, wins, losses, refill_count,
             music_enabled, effects_enabled, animation_mode,
             refill_generation, last_zero_generation, created_at, updated_at
        FROM users WHERE lower(email) = lower($1)`,
@@ -73,7 +73,7 @@ export async function createUser(first, second) {
     `INSERT INTO users
        (email, password_hash, nickname, beans, music_enabled, effects_enabled, animation_mode)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id, email, password_hash, nickname, beans, wins, losses,
+      RETURNING id, email, password_hash, nickname, beans, wins, losses, refill_count,
                music_enabled, effects_enabled, animation_mode,
                refill_generation, last_zero_generation, created_at, updated_at`,
     [email, passwordHash, nickname, beans, musicEnabled, effectsEnabled, animationMode]

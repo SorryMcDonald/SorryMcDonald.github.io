@@ -326,7 +326,8 @@ function renderPlayer(projected) {
   titles.replaceChildren(...(player.titles ?? []).map(titleChip));
   const meta = document.createElement('div');
   meta.className = 'player-meta';
-  meta.textContent = `${Number(player.totalContribution || 0).toLocaleString()} 豆${player.folded ? ' · 已弃牌' : ''}${player.allIn ? ' · 梭哈' : ''}${player.seen ? ' · 已看牌' : ''}`;
+  const settledBeans = player.settledBeans === null || player.settledBeans === undefined ? null : Number(player.settledBeans);
+  meta.textContent = `${Number(player.totalContribution || 0).toLocaleString()} 豆${player.folded ? ' · 已弃牌' : ''}${player.allIn ? ' · 梭哈' : ''}${player.seen ? ' · 已看牌' : ''}${settledBeans === null ? '' : ` · 结算后 ${settledBeans.toLocaleString()} 豆`}`;
   const cards = document.createElement('div');
   cards.className = 'cards';
   const visibleCards = Array.isArray(player.cards) ? player.cards : null;
@@ -519,7 +520,10 @@ function handleRoomEvent(event) {
     }
     return;
   }
-  if (event.eventType === 'round_settled') addFeed('本局结算完成，全部牌面已公开');
+  if (event.eventType === 'round_settled') {
+    addFeed('本局结算完成，全部牌面已公开');
+    refreshUser();
+  }
   if (event.eventType === 'player_action' && payload.action === 'timeout_fold') addFeed(`${payload.seat + 1} 号位超时弃牌`);
   loadRoom().catch(() => {});
 }
@@ -672,6 +676,12 @@ async function submitRefill(event) {
 async function loadLeaderboard(kind) {
   state.leaderboardKind = kind;
   const list = $('leaderboardList');
+  const heading = document.querySelector('.leaderboard-head');
+  if (heading) {
+    const columns = heading.querySelectorAll('span');
+    if (columns[1]) columns[1].textContent = kind === 'refills' ? '领取次数' : '对局';
+    if (columns[2]) columns[2].textContent = kind === 'refills' ? '次数' : '余额';
+  }
   document.querySelectorAll('.tab-button').forEach((button) => {
     const active = button.dataset.kind === kind;
     button.classList.toggle('active', active);
@@ -708,10 +718,10 @@ async function loadLeaderboard(kind) {
     identity.append(rank, profile);
     const record = document.createElement('div');
     record.className = 'leader-record';
-    record.textContent = `${entry.wins} 胜 / ${entry.losses} 负`;
+    record.textContent = kind === 'refills' ? `${Number(entry.refillCount ?? 0).toLocaleString()} 次` : `${entry.wins} 胜 / ${entry.losses} 负`;
     const beans = document.createElement('div');
     beans.className = 'leader-beans';
-    beans.textContent = `${Number(entry.beans).toLocaleString()} 豆`;
+    beans.textContent = kind === 'refills' ? `${Number(entry.refillCount ?? 0).toLocaleString()} 次` : `${Number(entry.beans).toLocaleString()} 豆`;
     row.append(identity, record, beans);
     return row;
   }));
@@ -735,7 +745,7 @@ function renderLeaderboardPodium(entries) {
     name.textContent = entry.nickname ?? '未命名玩家';
     const beans = document.createElement('span');
     beans.className = 'podium-beans';
-    beans.textContent = `${Number(entry.beans ?? 0).toLocaleString()} 豆`;
+    beans.textContent = state.leaderboardKind === 'refills' ? `${Number(entry.refillCount ?? 0).toLocaleString()} 次` : `${Number(entry.beans ?? 0).toLocaleString()} 豆`;
     profile.append(name, beans);
     card.append(rank, avatar, profile);
     return card;

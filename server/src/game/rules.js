@@ -89,9 +89,21 @@ export function calculateSidePotPayouts(players = []) {
       for (const winner of [...winners].sort((a, b) => Number(a.seat ?? 0) - Number(b.seat ?? 0))) {
         payouts[winner.id ?? winner.seat] += share + (remainder-- > 0 ? 1 : 0);
       }
+    } else if (pot > 0) {
+      // A layer made up only of folded/eliminated players is still money that
+      // entered the table. Return it in seat order so settlement cannot burn
+      // beans when a player folds after an unmatched contribution.
+      const share = Math.floor(pot / contributors.length);
+      let remainder = pot % contributors.length;
+      for (const contributor of [...contributors].sort((a, b) => Number(a.seat ?? 0) - Number(b.seat ?? 0))) {
+        payouts[contributor.id ?? contributor.seat] += share + (remainder-- > 0 ? 1 : 0);
+      }
     }
     previous = level;
   }
+  const contributedTotal = active.reduce((sum, player) => sum + contributionOf(player), 0);
+  const paidTotal = Object.values(payouts).reduce((sum, payout) => sum + Number(payout ?? 0), 0);
+  if (paidTotal !== contributedTotal) throw new Error(`结算池子不守恒: contributed=${contributedTotal}, paid=${paidTotal}`);
   return payouts;
 }
 

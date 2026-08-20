@@ -9,6 +9,7 @@ import { WebSocketGateway } from './ws/gateway.js';
 import { registerTexasRoutes } from './texas/routes.js';
 import { TexasLifecycleController } from './texas/lifecycle.js';
 import { registerTournamentRoutes } from './tournaments/routes.js';
+import { registerDoudizhuRoutes } from './doudizhu/routes.js';
 
 export async function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? config.logger });
@@ -33,6 +34,12 @@ export async function buildApp(options = {}) {
     service: options.texasService,
     store: options.store ?? app.auth.store,
     persistence: options.texasPersistence,
+    mutationQueue: app.lifecycle.mutationQueue
+  });
+  registerDoudizhuRoutes(app, {
+    service: options.doudizhuService,
+    store: options.store ?? app.auth.store,
+    persistence: options.doudizhuPersistence,
     mutationQueue: app.lifecycle.mutationQueue
   });
 

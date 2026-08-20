@@ -7,6 +7,8 @@ import { TexasService } from './texas/service.js';
 import { createTexasPersistence } from './texas/persistence.js';
 import { TournamentService } from './tournaments/service.js';
 import { createTournamentPersistence } from './tournaments/persistence.js';
+import { DoudizhuService } from './doudizhu/service.js';
+import { createDoudizhuPersistence } from './doudizhu/persistence.js';
 
 export async function createProductionRuntime(options = {}) {
   const env = options.env ?? process.env;
@@ -27,6 +29,9 @@ export async function createProductionRuntime(options = {}) {
   const tournamentService = new TournamentService({ store, roomService, texasService });
   const tournamentPersistence = createTournamentPersistence({ db, service:tournamentService });
   await tournamentPersistence.hydrate();
+  const doudizhuService = new DoudizhuService({ store });
+  const doudizhuPersistence = createDoudizhuPersistence({ db, service:doudizhuService });
+  await doudizhuPersistence.hydrateRooms();
   const app = await buildApp({
     db,
     store,
@@ -36,6 +41,8 @@ export async function createProductionRuntime(options = {}) {
     texasPersistence,
     tournamentService,
     tournamentPersistence,
+    doudizhuService,
+    doudizhuPersistence,
     attachGateway: true,
     secureCookies: env.NODE_ENV === 'production',
     logger: runtimeConfig.logger
@@ -52,6 +59,8 @@ export async function createProductionRuntime(options = {}) {
     texasPersistence,
     tournamentService,
     tournamentPersistence,
+    doudizhuService,
+    doudizhuPersistence,
     config: runtimeConfig,
     async close() {
       if (closed) return;

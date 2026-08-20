@@ -10,6 +10,7 @@ create table if not exists users (
   beans BIGINT NOT NULL DEFAULT 100000 CHECK (beans >= 0),
   wins BIGINT NOT NULL DEFAULT 0 CHECK (wins >= 0),
   losses BIGINT NOT NULL DEFAULT 0 CHECK (losses >= 0),
+  refill_count BIGINT NOT NULL DEFAULT 0 CHECK (refill_count >= 0),
   music_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   effects_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   animation_mode TEXT NOT NULL DEFAULT 'light'
