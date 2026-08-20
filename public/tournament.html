@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>每周锦标赛 · 牌局</title>
+  <link rel="stylesheet" href="/tournament.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="返回牌局"><span class="brand-mark">P</span><span class="brand-name">牌局</span></a>
+      <nav class="primary-nav" aria-label="游戏导航">
+        <a class="nav-link" href="/dezhou.html">德州扑克</a>
+        <a class="nav-link" href="/">炸金花</a>
+        <a class="nav-link active" href="/tournament.html" aria-current="page">锦标赛</a>
+      </nav>
+      <div class="account-block"><strong id="accountName">未登录</strong><span id="accountBeans">0 豆</span></div>
+    </header>
+
+    <main>
+      <section id="authView" class="auth-view" hidden>
+        <form id="loginForm" class="auth-panel">
+          <p class="eyebrow">WEEKLY TOURNAMENT</p>
+          <h1>登录后进入锦标赛</h1>
+          <label>邮箱<input id="emailInput" type="email" autocomplete="email" required></label>
+          <label>密码<input id="passwordInput" type="password" autocomplete="current-password" minlength="8" required></label>
+          <p id="loginError" class="error-text" role="alert"></p>
+          <button class="primary-button" type="submit">登录</button>
+          <a class="back-link" href="/">返回游戏大厅</a>
+        </form>
+      </section>
+
+      <section id="tournamentView" hidden>
+        <div class="tournament-head">
+          <div>
+            <p class="eyebrow">WEDNESDAY · 12:00 · ASIA/SHANGHAI</p>
+            <h1>每周三锦标赛</h1>
+            <p id="scheduleDate" class="schedule-date"></p>
+          </div>
+          <div class="schedule-state">
+            <span id="statusBadge" class="status-badge">读取赛程</span>
+            <strong id="countdown">--:--:--</strong>
+            <button id="refreshButton" class="ghost-button" type="button">刷新状态</button>
+          </div>
+        </div>
+
+        <div class="rule-strip" aria-label="锦标赛规则">
+          <div><span>带入上限</span><strong>200,000</strong></div>
+          <div><span>局内补充</span><strong>禁止</strong></div>
+          <div><span>退出规则</span><strong>淘汰且不可重入</strong></div>
+          <div><span>获胜条件</span><strong>最后一名有筹码玩家</strong></div>
+        </div>
+
+        <div id="trackList" class="track-list" aria-live="polite"></div>
+        <p id="pageError" class="error-text" role="alert"></p>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/tournament.js"></script>
+</body>
+</html>

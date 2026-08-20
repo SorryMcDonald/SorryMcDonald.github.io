@@ -134,7 +134,7 @@ export class TexasLifecycleController {
       }
       const roomIsEmpty = ![...room.players.values()].some((player) => !player.left && !player.spectating)
         && room.spectators.size === 0;
-      if (room.status === 'closed' && roomIsEmpty) {
+      if (room.status === 'closed' && roomIsEmpty && !room.tournament) {
         let deleted = true;
         try {
           await this.persistence?.deleteRoom?.(canonicalRoomId);
@@ -182,6 +182,7 @@ export class TexasLifecycleController {
       this.turnTimers.delete(room.id);
       try {
         await this.mutate(room.id, () => this.service.timeoutFold(room.id, binding));
+        await this.onRoomMutation?.(room.id);
       } catch (error) {
         if (this.closing) return;
         if (retryAttempt >= TEXAS_PERSISTENCE_RETRY_LIMIT) {
@@ -249,6 +250,7 @@ export class TexasLifecycleController {
       this.disconnectTimers.delete(key);
       try {
         await this.mutate(canonicalRoomId, () => this.service.leaveRoom(canonicalRoomId, userId));
+        await this.onRoomMutation?.(canonicalRoomId);
       } catch (error) {
         if (this.closing) return;
         if (retryAttempt >= TEXAS_PERSISTENCE_RETRY_LIMIT) {

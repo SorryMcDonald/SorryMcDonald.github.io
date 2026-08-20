@@ -63,3 +63,17 @@ describe('Texas PostgreSQL schema contract', () => {
     expect(assertions).toMatch(/RAISE EXCEPTION/i);
   });
 });
+
+describe('Tournament PostgreSQL schema contract', () => {
+  it('defines weekly editions, game tracks, tables, entries and immutable wallet history', async () => {
+    const schema = await readFile(resolve(process.cwd(), 'sql/007_tournaments.sql'), 'utf8');
+    for (const table of ['tournament_editions','tournament_tracks','tournament_tables','tournament_entries','tournament_wallet_ledger']) {
+      expect(schema).toMatch(new RegExp(`create table if not exists ${table}`, 'i'));
+    }
+    expect(schema).toMatch(/buy_in\s*>\s*0\s+AND\s+buy_in\s*<=\s*200000/i);
+    expect(schema).toMatch(/UNIQUE\s*\(track_id,\s*user_id\)/i);
+    expect(schema).toMatch(/TOURNAMENT_WALLET_LEDGER_IMMUTABLE/i);
+    expect(schema).toMatch(/tournament_buy_in/);
+    expect(schema).toMatch(/tournament_prize/);
+  });
+});

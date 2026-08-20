@@ -127,6 +127,18 @@ export class WebSocketGateway {
     try { room = service?.room(canonicalRoomId); } catch {}
 
     for (const entry of this.rooms.get(this.roomKey(canonicalRoomId, game)) ?? []) {
+      const tournamentMoveRecipient = event.eventType === 'tournament_player_moved'
+        && event.payload?.userId === entry.userId
+        && event.payload?.toRoomId;
+      if (tournamentMoveRecipient) {
+        const moveEvent = game === 'texas' && room && service?.publicEvent
+          ? service.publicEvent(room, event, entry.userId)
+          : publicEvent(event, { spectator:false });
+        send(entry.socket, game === 'texas'
+          ? { type:'room_event', game, event:moveEvent }
+          : { type:'room_event', event:moveEvent });
+        continue;
+      }
       if (room && !canAccessRoom(room, service, canonicalRoomId, entry.userId, game)) {
         this.closeUserRoomSockets(canonicalRoomId, entry.userId, game);
         continue;

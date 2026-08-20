@@ -38,6 +38,7 @@ export function registerRoomRoutes(app, options = {}) {
       ...action,
       now: lifecycle.clock?.now?.() ?? Date.now()
     }), { affectedUserIds: [request.user.id] });
+    await app.reconcileTournamentRoom?.('zhajinhua', request.params.roomId);
     return { room: service.snapshot(request.params.roomId, request.user.id) };
   });
   app.post('/api/rooms/:roomId/messages', { preHandler: requireUser }, async (request, reply) => {
@@ -53,12 +54,14 @@ export function registerRoomRoutes(app, options = {}) {
     await lifecycle.mutate(request.params.roomId, () => service.startNextRound(request.params.roomId, request.user.id, {
       now: lifecycle.clock?.now?.() ?? Date.now()
     }));
+    await app.reconcileTournamentRoom?.('zhajinhua', request.params.roomId);
     return { room: service.snapshot(request.params.roomId, request.user.id) };
   });
   app.post('/api/rooms/:roomId/leave', { preHandler: requireUser }, async (request) => {
     await lifecycle.mutate(request.params.roomId, () => service.leaveRoom(request.params.roomId, request.user.id, {
       now: lifecycle.clock?.now?.() ?? Date.now()
     }));
+    await app.reconcileTournamentRoom?.('zhajinhua', request.params.roomId);
     return { ok: true };
   });
   app.post('/api/rooms/:roomId/spectate', { preHandler: requireUser }, async (request, reply) => {

@@ -72,13 +72,60 @@ BEGIN
   IF missing_objects IS NOT NULL THEN
     RAISE EXCEPTION 'missing Texas triggers: %', missing_objects;
   END IF;
+
+  SELECT array_agg(object_name ORDER BY object_name)
+  INTO missing_objects
+  FROM unnest(ARRAY[
+    'tournament_editions',
+    'tournament_tracks',
+    'tournament_tables',
+    'tournament_entries',
+    'tournament_wallet_ledger'
+  ]) AS object_name
+  WHERE to_regclass('public.' || object_name) IS NULL;
+  IF missing_objects IS NOT NULL THEN
+    RAISE EXCEPTION 'missing tournament tables: %', missing_objects;
+  END IF;
+
+  SELECT array_agg(object_name ORDER BY object_name)
+  INTO missing_objects
+  FROM unnest(ARRAY[
+    'tournament_editions_opens_at_idx',
+    'tournament_entries_room_active_idx',
+    'tournament_entries_user_idx'
+  ]) AS object_name
+  WHERE to_regclass('public.' || object_name) IS NULL;
+  IF missing_objects IS NOT NULL THEN
+    RAISE EXCEPTION 'missing tournament indexes: %', missing_objects;
+  END IF;
+
+  SELECT array_agg(expected.trigger_name ORDER BY expected.trigger_name)
+  INTO missing_objects
+  FROM (VALUES
+    ('tournament_editions', 'trg_tournament_editions_updated_at'),
+    ('tournament_tracks', 'trg_tournament_tracks_updated_at'),
+    ('tournament_wallet_ledger', 'trg_tournament_wallet_ledger_immutable')
+  ) AS expected(table_name, trigger_name)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM pg_trigger AS trigger_row
+    JOIN pg_class AS table_row ON table_row.oid = trigger_row.tgrelid
+    WHERE table_row.relname = expected.table_name
+      AND trigger_row.tgname = expected.trigger_name
+      AND NOT trigger_row.tgisinternal
+  );
+  IF missing_objects IS NOT NULL THEN
+    RAISE EXCEPTION 'missing tournament triggers: %', missing_objects;
+  END IF;
 END
 $verify$;
 
 SELECT json_build_object(
   'schema_ready', true,
-  'migration_level', 6,
+  'migration_level', 7,
   'texas_table_count', 9,
   'texas_index_count', 9,
-  'texas_trigger_count', 4
+  'texas_trigger_count', 4,
+  'tournament_table_count', 5,
+  'tournament_index_count', 3,
+  'tournament_trigger_count', 3
 ) AS schema_receipt;

@@ -186,7 +186,7 @@ function renderActions() {
   text('callButton', allowed.toCall ? `跟注 ${money(allowed.toCall)}` : '跟注');
   const canRaise = actions.has('raise') || actions.has('bet'); $('raiseButton').disabled = state.acting || !canRaise;
   $('raiseButton').dataset.action = actions.has('bet') ? 'bet' : 'raise'; text('raiseButton', actions.has('bet') ? '下注' : '加注');
-  text('actionCostLabel', allowed.toCall ? `待跟 ${money(allowed.toCall)}` : '等待你的行动'); text('beansLabel', `${money(state.user?.beans)} 豆`);
+  text('actionCostLabel', allowed.toCall ? `待跟 ${money(allowed.toCall)}` : '等待你的行动'); text('beansLabel', `${money(player?.stack)} 筹码`);
 }
 
 function renderCountdown() {
@@ -204,9 +204,9 @@ function renderRoom() {
   const room = state.room; if (!room) return renderLobby();
   $('lobbyView').hidden = true; $('tableView').hidden = false; $('createButton').hidden = true; $('joinCodeButton').hidden = true; $('leaveButton').hidden = false;
   $('startButton').hidden = !['waiting','settled'].includes(room.status) || room.hostUserId !== state.user.id;
-  const player = me(); $('rebuyButton').hidden = !player || !['waiting','settled'].includes(room.status) || player.stack >= room.maxBuyIn;
-  $('roomSettingsButton').hidden = room.hostUserId !== state.user.id; $('refillButton').hidden = Number(state.user?.beans) !== 0;
-  text('roomTitle', `房间 ${room.code}`); text('statusBadge', STATUS[room.status] ?? room.status); text('potValue', money(room.pot)); text('handNumber', room.handNumber);
+  const player = me(); $('rebuyButton').hidden = Boolean(room.tournament) || !player || !['waiting','settled'].includes(room.status) || player.stack >= room.maxBuyIn;
+  $('roomSettingsButton').hidden = Boolean(room.tournament) || room.hostUserId !== state.user.id; $('refillButton').hidden = Boolean(room.tournament) || Number(state.user?.beans) !== 0;
+  text('roomTitle', room.tournament ? `锦标赛 · ${room.tournament.tableNumber} 桌` : `房间 ${room.code}`); text('statusBadge', STATUS[room.status] ?? room.status); text('potValue', money(room.pot)); text('handNumber', room.handNumber);
   text('blindText', `${money(room.smallBlind)} / ${money(room.bigBlind)}`); text('currentBet', money(room.currentBet)); text('minimumRaise', money(room.minRaise));
   const current = room.players.find((value) => value.seat === room.currentTurn);
   text('turnText', current ? (current.userId === state.user.id ? '轮到你行动' : `轮到 ${current.nickname}`) : (['waiting','settled'].includes(room.status) ? '等待房主开始下一手' : '牌局处理中'));
@@ -388,7 +388,7 @@ function connectWs() {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'; const roomId = state.room.id;
   const socket = new WebSocket(`${protocol}://${location.host}/ws?game=texas&roomId=${encodeURIComponent(roomId)}`); socket.__roomId = roomId; state.ws = socket;
   socket.onopen = () => socket.send(JSON.stringify({ type:'sync', after:state.lastEventId }));
-  socket.onmessage = (message) => { try { const data = JSON.parse(message.data); if (data.type === 'room_event' && data.game === 'texas') loadRoom().catch(() => {}); if (data.type === 'global_banner') showBanner(data.banner?.message); } catch {} };
+  socket.onmessage = (message) => { try { const data = JSON.parse(message.data); if (data.type === 'room_event' && data.game === 'texas') { const payload = data.event?.payload ?? {}; if (data.event?.eventType === 'tournament_player_moved' && payload.userId === state.user?.id && payload.toRoomId) { sessionStorage.setItem('texas.roomId',payload.toRoomId); disconnectWs(); state.room = { id:payload.toRoomId,version:-1 }; loadRoom().then(connectWs).catch(() => { location.href='/tournament.html'; }); } else loadRoom().catch(() => {}); } if (data.type === 'global_banner') showBanner(data.banner?.message); } catch {} };
   socket.onclose = () => { if (state.ws === socket) state.ws = null; if (!socket.__manual && state.room?.id === roomId) window.setTimeout(connectWs,1500); };
 }
 
@@ -510,6 +510,7 @@ $('joinForm').addEventListener('submit',async(event) => {
 $('startButton').addEventListener('click',async() => { try { applyRoomSnapshot((await api(`/api/texas/rooms/${state.room.id}/start`,{ method:'POST', body:{} })).room); } catch (error) { showBanner(error.message); } });
 $('leaveButton').addEventListener('click',async() => {
   if (!state.room) return; const id = state.room.id;
+  if (state.room.tournament && !window.confirm('退出锦标赛将立即淘汰，且本周无法重新加入。确认退出？')) return;
   try { await api(`/api/texas/rooms/${id}/leave`,{ method:'POST', body:{} }); disconnectWs(); state.room = null; state.lastEventId = 0; state.eventCursorReady = false; try { sessionStorage.removeItem('texas.roomId'); } catch {} renderLobby(); await refreshUser(); await loadRooms(); }
   catch (error) { showBanner(error.message); }
 });

@@ -245,6 +245,7 @@ export class RoomLifecycleController {
           if (!latestPlayer || latestPlayer.actionSeq !== binding.actionSeq) return latest;
           return this.service.timeoutFold(room.id, { ...binding, now: this.clock.now() });
         });
+        await this.onRoomMutation?.(room.id);
       } catch (error) {
         if (this.closing) return;
         if (retryAttempt >= PERSISTENCE_RETRY_LIMIT) {
@@ -306,6 +307,7 @@ export class RoomLifecycleController {
       this.disconnectTimers.delete(key);
       try {
         await this.mutate(canonicalRoomId, () => this.service.leaveRoom(canonicalRoomId, userId, { now: this.clock.now() }));
+        await this.onRoomMutation?.(canonicalRoomId);
       } catch (error) {
         if (this.closing) return;
         if (retryAttempt >= PERSISTENCE_RETRY_LIMIT) {

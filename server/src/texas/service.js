@@ -61,7 +61,7 @@ function revealStreet(room, street) {
 
 function cashOut(room, player, user, reason = 'leave') {
   const amount = Math.max(0, numeric(player.stack));
-  if (amount > 0) {
+  if (amount > 0 && !room.tournament) {
     user.beans = userBeans(user) + amount;
     room.pendingLedger.push({ idempotencyKey:`texas:${room.id}:cashout:${player.id}:${room.version}:${reason}`, userId:user.id, roomId:room.id, handId:room.hand?.id ?? null, entryType:'cash_out', amount, balanceAfter:user.beans, metadata:{ reason } });
   }
@@ -69,6 +69,7 @@ function cashOut(room, player, user, reason = 'leave') {
   player.left = true;
   player.pendingLeave = false;
   player.inHand = false;
+  if (room.tournament) player.tournamentExited = true;
   return amount;
 }
 
@@ -120,7 +121,7 @@ export class TexasService {
     return room;
   }
 
-  createRoom(userId, input = {}) {
+  createRoom(userId, input = {}, internal = {}) {
     const user = this.user(userId);
     if ([...this.rooms.values()].some((room) => activePlayers(room).some((player) => player.userId === userId))) throw httpError(409, '账号已在德州房间中');
     const smallBlind = Math.max(1, Math.floor(numeric(input.smallBlind, DEFAULTS.smallBlind)));
@@ -128,19 +129,20 @@ export class TexasService {
     const minBuyIn = Math.max(bigBlind * 20, Math.floor(numeric(input.minBuyIn, bigBlind * 20)));
     const maxBuyIn = Math.max(minBuyIn, Math.floor(numeric(input.maxBuyIn, bigBlind * 100)));
     const maxPlayers = Math.min(9, Math.max(2, Math.floor(numeric(input.maxPlayers, DEFAULTS.maxPlayers))));
+    const tournament = internal.tournament ?? null;
     const id = randomUUID();
     const room = {
       id, code:String(input.code ?? Math.floor(100000 + Math.random() * 900000)), status:'waiting', hostUserId:userId,
-      isPublic:input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.allowSpectators),
+      isPublic:tournament ? false : input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.allowSpectators),
       smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:bigBlind,
       pot:0, pots:[], board:[], deck:[], handNumber:0, hand:null, players:new Map(), spectators:new Set(),
       events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[],
       messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null,
-      createdAt:this.timestamp(), updatedAt:this.timestamp()
+      createdAt:this.timestamp(), updatedAt:this.timestamp(), tournament
     };
     this.rooms.set(id, room);
     try {
-      this.joinRoom(id, userId, { seat:0, buyIn:input.buyIn });
+      this.joinRoom(id, userId, { seat:0, buyIn:input.buyIn }, internal);
     } catch (error) {
       this.rooms.delete(id);
       throw error;
@@ -149,8 +151,13 @@ export class TexasService {
     return this.touch(room);
   }
 
-  joinRoom(roomId, userId, input = {}) {
+  createTournamentRoom(userId, input, tournament) {
+    return this.createRoom(userId, { ...input, isPublic:false, allowSpectators:true }, { tournament });
+  }
+
+  joinRoom(roomId, userId, input = {}, internal = {}) {
     const room = this.room(roomId);
+    if (room.tournament && internal.tournament?.trackId !== room.tournament.trackId) throw httpError(403, '锦标赛房间只能通过锦标赛入口加入');
     if (room.status === 'closed') throw httpError(409, '房间已关闭');
     const user = this.user(userId);
     const existing = activePlayers(room).find((player) => player.userId === userId);
@@ -158,19 +165,24 @@ export class TexasService {
     if ([...this.rooms.values()].some((candidate) => candidate.id !== room.id && activePlayers(candidate).some((player) => player.userId === userId))) throw httpError(409, '账号已在其他德州房间中');
     if (activePlayers(room).length >= room.maxPlayers) throw httpError(409, '房间已满');
     const buyIn = Math.floor(numeric(input.buyIn, Math.min(DEFAULTS.defaultBuyIn, room.maxBuyIn)));
-    if (buyIn < room.minBuyIn || buyIn > room.maxBuyIn) throw httpError(400, `买入需在 ${room.minBuyIn}-${room.maxBuyIn} 之间`);
-    if (userBeans(user) < buyIn) throw httpError(400, '账户豆子不足以买入');
+    const tournamentMove = Boolean(internal.tournamentMove);
+    if (!tournamentMove && (buyIn < room.minBuyIn || buyIn > room.maxBuyIn)) throw httpError(400, `买入需在 ${room.minBuyIn}-${room.maxBuyIn} 之间`);
+    if (!tournamentMove && userBeans(user) < buyIn) throw httpError(400, '账户豆子不足以买入');
     const used = new Set(activePlayers(room).map((player) => player.seat));
     const requested = Number(input.seat);
     const seat = Number.isInteger(requested) && requested >= 0 && requested < room.maxPlayers && !used.has(requested)
       ? requested : [...Array(room.maxPlayers).keys()].find((value) => !used.has(value));
-    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:ACTIVE_STREETS.has(room.status), folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false };
-    user.beans = userBeans(user) - buyIn;
+    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:ACTIVE_STREETS.has(room.status), folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false, tournamentEntryId:internal.tournament?.entryId ?? null, tournamentExited:false };
+    if (!tournamentMove) user.beans = userBeans(user) - buyIn;
     room.players.set(player.id, player);
     room.spectators.delete(userId);
-    this.ledger(room, { idempotencyKey:`texas:${room.id}:buyin:${player.id}`, userId, roomId:room.id, handId:null, entryType:'buy_in', amount:-buyIn, balanceAfter:user.beans, metadata:{ seat } });
+    if (!tournamentMove) this.ledger(room, { idempotencyKey:`texas:${room.id}:buyin:${player.id}`, userId, roomId:room.id, handId:null, entryType:room.tournament ? 'tournament_buy_in' : 'buy_in', amount:-buyIn, balanceAfter:user.beans, metadata:{ seat, tournamentTrackId:room.tournament?.trackId ?? null } });
     appendEvent(room, 'texas_player_joined', { userId, nickname:user.nickname, seat, waiting:player.waiting });
     return this.touch(room);
+  }
+
+  joinTournamentRoom(roomId, userId, input, tournament) {
+    return this.joinRoom(roomId, userId, input, { tournament, tournamentMove:Boolean(input?.moving) });
   }
 
   setSpectating(roomId, userId, enabled = true) {
@@ -178,6 +190,7 @@ export class TexasService {
     if (enabled && room.status === 'closed') throw httpError(409, '房间已关闭');
     if (enabled && !room.allowSpectators) throw httpError(403, '房主未开启观战');
     const player = activePlayers(room).find((value) => value.userId === userId);
+    if (enabled && room.tournament && player) throw httpError(409, '锦标赛玩家退出后即淘汰，不能切换为观战');
     if (enabled && player) {
       if (player.inHand && ACTIVE_STREETS.has(room.status)) throw httpError(409, '当前手牌中不能切换观战');
       cashOut(room, player, this.user(userId), 'spectate');
@@ -200,6 +213,7 @@ export class TexasService {
 
   rebuy(roomId, userId, amount) {
     const room = this.room(roomId);
+    if (room.tournament) throw httpError(409, '锦标赛禁止补充筹码');
     if (!['waiting','settled'].includes(room.status)) throw httpError(409, '只能在两手牌之间补充筹码');
     const player = activePlayers(room).find((value) => value.userId === userId);
     if (!player) throw httpError(404, '玩家不在房间中');
@@ -360,8 +374,8 @@ export class TexasService {
       player.stack += payout;
       const net = payout - player.totalContribution;
       const user = this.user(player.userId);
-      if (net > 0) user.wins = numeric(user.wins) + 1;
-      else if (net < 0) user.losses = numeric(user.losses) + 1;
+      if (!room.tournament && net > 0) user.wins = numeric(user.wins) + 1;
+      else if (!room.tournament && net < 0) user.losses = numeric(user.losses) + 1;
       results.push({ playerId:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
     }
     room.status = 'settled'; room.currentTurn = -1; room.currentBet = 0; room.pot = 0;
@@ -395,6 +409,56 @@ export class TexasService {
     return updated;
   }
 
+  extractTournamentPlayer(roomId, userId, { toRoomId } = {}) {
+    const room = this.room(roomId);
+    if (!room.tournament) throw httpError(409, '该房间不是锦标赛房间');
+    if (!['waiting','settled'].includes(room.status)) throw httpError(409, '只能在两手牌之间合并桌位');
+    const player = activePlayers(room).find((value) => value.userId === userId);
+    if (!player) throw httpError(404, '锦标赛玩家不在该桌');
+    const stack = Math.max(0, numeric(player.stack));
+    player.stack = 0;
+    player.left = true;
+    player.inHand = false;
+    if (room.hostUserId === userId) room.hostUserId = activePlayers(room)[0]?.userId ?? null;
+    appendEvent(room, 'tournament_player_moved', { userId, fromRoomId:room.id, toRoomId, stack });
+    this.touch(room);
+    return stack;
+  }
+
+  eliminateTournamentPlayer(roomId, userId) {
+    const room = this.room(roomId);
+    const player = activePlayers(room).find((value) => value.userId === userId);
+    if (!room.tournament || !player || player.stack > 0) return false;
+    player.left = true;
+    player.inHand = false;
+    room.spectators.add(userId);
+    if (room.hostUserId === userId) room.hostUserId = activePlayers(room)[0]?.userId ?? null;
+    appendEvent(room, 'tournament_player_eliminated', { userId, seat:player.seat });
+    this.touch(room);
+    return true;
+  }
+
+  awardTournamentChampion(roomId, userId) {
+    const room = this.room(roomId);
+    if (!room.tournament || room.tournament.completed) return 0;
+    const player = activePlayers(room).find((value) => value.userId === userId);
+    if (!player) throw httpError(404, '冠军不在锦标赛牌桌');
+    const amount = Math.max(0, numeric(player.stack));
+    const user = this.user(userId);
+    user.beans = userBeans(user) + amount;
+    player.stack = 0;
+    room.tournament.completed = true;
+    room.status = 'closed';
+    if (amount > 0) this.ledger(room, {
+      idempotencyKey:`tournament:${room.tournament.trackId}:prize:${userId}`,
+      userId, roomId:room.id, handId:room.hand?.id ?? null, entryType:'tournament_prize',
+      amount, balanceAfter:user.beans, metadata:{ tournamentTrackId:room.tournament.trackId }
+    });
+    appendEvent(room, 'tournament_champion', { userId, nickname:user.nickname, prize:amount });
+    this.touch(room);
+    return amount;
+  }
+
   addMessage(roomId, userId, text, { now = this.now() } = {}) {
     const room = this.room(roomId);
     const player = activePlayers(room).find((value) => value.userId === userId);
@@ -417,7 +481,7 @@ export class TexasService {
   }
 
   listRooms() {
-    return [...this.rooms.values()].filter((room) => room.isPublic && room.status !== 'closed').map((room) => ({
+    return [...this.rooms.values()].filter((room) => !room.tournament && room.isPublic && room.status !== 'closed').map((room) => ({
       id:room.id, code:room.code, status:room.status, playerCount:activePlayers(room).length, maxPlayers:room.maxPlayers,
       smallBlind:room.smallBlind, bigBlind:room.bigBlind, minBuyIn:room.minBuyIn, maxBuyIn:room.maxBuyIn, allowSpectators:room.allowSpectators,
       hostNickname:this.store.users.get(room.hostUserId)?.nickname ?? '等待房主'
@@ -453,6 +517,7 @@ export class TexasService {
       pots:room.pots, board:room.board, handNumber:room.handNumber, handId:room.hand?.id ?? null,
        turnStartedAt:room.turnStartedAt ?? null, turnDeadlineAt:room.turnDeadlineAt ?? null,
        players, messages:(room.messages ?? []).map((message) => ({ ...message })), allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
+      tournament:room.tournament ? { ...room.tournament } : null,
       recentEvents:room.events.slice(-30).map((event) => this.publicEvent(room, event, userId))
     };
   }

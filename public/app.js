@@ -102,11 +102,13 @@ function applyUser(user) {
 
 function renderAccount() {
   if (!state.user) return;
+  const tournamentRoom = Boolean(state.room?.tournament);
+  const restoringRoom = !state.room && Boolean(sessionStorage.getItem('zhajinhua.roomId'));
   $('accountLabel').textContent = `${state.user.nickname} · ${Number(state.user.beans || 0).toLocaleString()} 豆`;
   $('accountTitles').replaceChildren(...(state.user.titles ?? []).map(titleChip));
-  $('refillButton').hidden = Number(state.user.beans ?? 0) !== 0;
+  $('refillButton').hidden = tournamentRoom || Number(state.user.beans ?? 0) !== 0;
   if (Number(state.user.beans ?? 0) > 0) state.refillPrompted = false;
-  if (Number(state.user.beans ?? 0) === 0 && !state.refillPrompted && !$('refillDialog').open) {
+  if (!tournamentRoom && !restoringRoom && Number(state.user.beans ?? 0) === 0 && !state.refillPrompted && !$('refillDialog').open) {
     state.refillPrompted = true;
     $('refillDialog').showModal();
   }
@@ -383,16 +385,18 @@ function renderRoom() {
   $('createRoomButton').hidden = true;
   $('joinRoomButton').hidden = true;
   $('leaveRoomButton').hidden = false;
-  $('roomCode').textContent = room.code;
+  $('roomCode').textContent = room.tournament ? `锦标赛 · ${room.tournament.tableNumber} 桌` : room.code;
   $('roundStatus').textContent = ROOM_STATUS_LABELS[room.status] || room.status;
   $('potValue').textContent = Number(room.pot || 0).toLocaleString();
-  $('beansLabel').textContent = `${Number(state.user.beans || 0).toLocaleString()} 豆`;
+  const ownPlayer = room.players.find((player) => player.userId === state.user.id);
+  $('beansLabel').textContent = room.tournament ? `${Number(ownPlayer?.tournamentChips || 0).toLocaleString()} 筹码` : `${Number(state.user.beans || 0).toLocaleString()} 豆`;
   $('bettingRoundLabel').textContent = String(Number(room.bettingRound || 0) + (room.status === 'betting' ? 1 : 0));
   $('roleLabel').textContent = room.isSpectator ? '观战视角 · 全局明牌' : room.dealerUserId === state.user.id ? '本局庄家' : '';
   $('startNextButton').hidden = !(room.status === 'waiting' || room.status === 'settled') || Boolean(room.dealerUserId && room.dealerUserId !== state.user.id);
-  $('observeButton').hidden = room.hostUserId !== state.user.id;
+  $('observeButton').hidden = Boolean(room.tournament) || room.hostUserId !== state.user.id;
   $('observeButton').textContent = room.allowSpectators ? '关闭观战' : '开启观战';
-  $('spectateButton').hidden = !room.allowSpectators || room.isSpectator;
+  $('spectateButton').hidden = Boolean(room.tournament) || !room.allowSpectators || room.isSpectator;
+  $('refillButton').hidden = Boolean(room.tournament) || Number(state.user.beans ?? 0) !== 0;
   $('players').dataset.seatCount = String(room.players.length);
   $('players').replaceChildren(...projectSeats(room.players, state.user.id).map(renderPlayer));
   renderActions();
@@ -485,6 +489,13 @@ function playCompareEffect(result) {
 
 function handleRoomEvent(event) {
   const payload = event.payload || {};
+  if (event.eventType === 'tournament_player_moved' && payload.userId === state.user?.id && payload.toRoomId) {
+    sessionStorage.setItem('zhajinhua.roomId', payload.toRoomId);
+    disconnectRoomWs();
+    state.room = { id:payload.toRoomId };
+    loadRoom().then(connectWs).catch(() => { location.href = '/tournament.html'; });
+    return;
+  }
   if (event.eventType === 'compare_started') {
     const text = `${payload.attacker} 向 ${payload.target} 发起比牌，费用 ${payload.fee}`;
     $('compareNotice').textContent = text;
@@ -546,7 +557,7 @@ async function joinRoom(roomId) {
   }
 }
 
-async function leaveCurrentRoom(){if(!state.room)return;const previousRoom=state.room;const roomId=previousRoom.id;disconnectRoomWs();state.room=null;try{await api(`/api/rooms/${roomId}/leave`,{method:'POST',body:{}});state.feed=[];try{sessionStorage.removeItem('zhajinhua.roomId');}catch{}$('roundFeed').replaceChildren();renderLobby();await refreshUser();await loadRoomList();}catch(error){state.room=previousRoom;renderRoom();connectWs();addFeed(error.message);}}
+async function leaveCurrentRoom(){if(!state.room)return;if(state.room.tournament&&!window.confirm('退出锦标赛将立即淘汰，且本周无法重新加入。确认退出？'))return;const previousRoom=state.room;const roomId=previousRoom.id;disconnectRoomWs();state.room=null;try{await api(`/api/rooms/${roomId}/leave`,{method:'POST',body:{}});state.feed=[];try{sessionStorage.removeItem('zhajinhua.roomId');}catch{}$('roundFeed').replaceChildren();renderLobby();await refreshUser();await loadRoomList();}catch(error){state.room=previousRoom;renderRoom();connectWs();addFeed(error.message);}}
 
 async function roomAction(action, extra = {}) {
   if (!state.room) return;

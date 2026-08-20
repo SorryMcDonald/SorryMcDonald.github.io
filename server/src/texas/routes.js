@@ -70,10 +70,12 @@ export function registerTexasRoutes(app, options = {}) {
   });
   app.post('/api/texas/rooms/:roomId/start',{ preHandler:requireUser },async(request) => {
     const room=await mutate(request.params.roomId,() => service.startHand(request.params.roomId,request.user.id));
+    await app.reconcileTournamentRoom?.('texas',room.id);
     return { room:service.snapshot(room.id,request.user.id) };
   });
   app.post('/api/texas/rooms/:roomId/actions',{ preHandler:requireUser },async(request) => {
     const room=await mutate(request.params.roomId,() => service.action(request.params.roomId,request.user.id,request.body ?? {}));
+    await app.reconcileTournamentRoom?.('texas',room.id);
     return { room:service.snapshot(room.id,request.user.id) };
   });
   app.post('/api/texas/rooms/:roomId/rebuy',{ preHandler:requireUser },async(request) => {
@@ -82,6 +84,7 @@ export function registerTexasRoutes(app, options = {}) {
   });
   app.post('/api/texas/rooms/:roomId/leave',{ preHandler:requireUser },async(request) => {
     await mutate(request.params.roomId,() => service.leaveRoom(request.params.roomId,request.user.id));
+    await app.reconcileTournamentRoom?.('texas',request.params.roomId);
     return { ok:true };
   });
   app.post('/api/texas/rooms/:roomId/spectate',{ preHandler:requireUser },async(request) => {

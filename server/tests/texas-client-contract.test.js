@@ -44,7 +44,7 @@ describe('Texas browser client contract',() => {
       readFile(new URL('../../public/app.js',import.meta.url),'utf8'),
       readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8')
     ]);
-    const expected = ['牌局','游戏大厅','公开房间','德州扑克','斗地主','炸金花','排行榜'];
+    const expected = ['牌局','游戏大厅','公开房间','德州扑克','斗地主','炸金花','锦标赛','排行榜'];
     expect(navLabels(zhajinhuaHtml)).toEqual(expected);
     expect(navLabels(texasHtml)).toEqual(expected);
     expect(zhajinhuaJs).not.toContain("destination === 'table' ? 'zjh' : destination");

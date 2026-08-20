@@ -8,6 +8,7 @@ import { registerLeaderboardRoutes } from './leaderboard/routes.js';
 import { WebSocketGateway } from './ws/gateway.js';
 import { registerTexasRoutes } from './texas/routes.js';
 import { TexasLifecycleController } from './texas/lifecycle.js';
+import { registerTournamentRoutes } from './tournaments/routes.js';
 
 export async function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? config.logger });
@@ -41,6 +42,17 @@ export async function buildApp(options = {}) {
     mutationQueue: app.lifecycle.mutationQueue
   });
   app.decorate('texasLifecycle', texasLifecycle);
+
+  registerTournamentRoutes(app, {
+    service:options.tournamentService,
+    store:options.store ?? app.auth.store,
+    persistence:options.tournamentPersistence,
+    roomPersistence:options.persistence,
+    texasPersistence:options.texasPersistence,
+    clock:options.tournamentClock
+  });
+  app.lifecycle.onRoomMutation = (roomId) => app.reconcileTournamentRoom('zhajinhua', roomId);
+  app.texasLifecycle.onRoomMutation = (roomId) => app.reconcileTournamentRoom('texas', roomId);
 
   if (options.attachGateway) {
     const gateway = new WebSocketGateway({

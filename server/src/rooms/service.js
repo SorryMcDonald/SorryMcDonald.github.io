@@ -43,6 +43,10 @@ function userBeans(user) {
   return Number(user.beans ?? 0);
 }
 
+function playerBalance(room, player, user) {
+  return room.tournament ? Number(player?.tournamentChips ?? 0) : userBeans(user);
+}
+
 function seatedPlayers(room) {
   return [...room.players.values()].filter((player) => !player.left);
 }
@@ -88,10 +92,14 @@ function setTurn(room, seat, now) {
 
 function debit(room, player, user, amount) {
   if (!Number.isSafeInteger(amount) || amount < 0) throw httpError(400, '下注金额无效');
-  const balance = userBeans(user);
+  const balance = playerBalance(room, player, user);
   if (amount > balance) throw httpError(400, '下注豆子不足');
-  user.beans = balance - amount;
-  if (balance > 0 && user.beans === 0) user.refill_generation = Number(user.refill_generation ?? 0) + 1;
+  if (room.tournament) {
+    player.tournamentChips = balance - amount;
+  } else {
+    user.beans = balance - amount;
+    if (balance > 0 && user.beans === 0) user.refill_generation = Number(user.refill_generation ?? 0) + 1;
+  }
   player.currentBet += amount;
   player.totalContribution += amount;
   room.pot += amount;
@@ -128,7 +136,7 @@ export class RoomService {
       return {
         ...result,
         active: seated && !room.spectators.has(result.userId),
-        beans: this.user(result.userId).beans
+        beans: room.tournament ? result.tournamentChips : this.user(result.userId).beans
       };
     });
     const candidate = selectDealer(candidates);
@@ -137,7 +145,7 @@ export class RoomService {
     return candidate;
   }
 
-  createRoom(userId, input = {}) {
+  createRoom(userId, input = {}, internal = {}) {
     this.ensureUser(userId);
     if ([...this.rooms.values()].some((room) => seatedPlayers(room).some((player) => player.userId === userId))) {
       throw httpError(409, '账号已有座位');
@@ -159,6 +167,7 @@ export class RoomService {
       if (!code) throw httpError(503, '暂时无法生成房间码');
     }
     const id = randomUUID();
+    const tournament = internal.tournament ?? null;
     const room = {
       id,
       code,
@@ -183,16 +192,22 @@ export class RoomService {
       eventSeq: 0,
       messages: [],
       chatLastAt: new Map(),
-      round: null
+      round: null,
+      tournament
     };
     this.rooms.set(id, room);
     appendEvent(room, 'room_created', { code: room.code });
-    this.joinRoom(id, userId, 0);
+    this.joinRoom(id, userId, 0, internal);
     return room;
   }
 
-  joinRoom(roomId, userId, seat) {
+  createTournamentRoom(userId, input, tournament) {
+    return this.createRoom(userId, { ...input, allowSpectators:true }, { tournament, buyIn:input.buyIn });
+  }
+
+  joinRoom(roomId, userId, seat, internal = {}) {
     const room = this.room(roomId);
+    if (room.tournament && internal.tournament?.trackId !== room.tournament.trackId) throw httpError(403, '锦标赛房间只能通过锦标赛入口加入');
     const user = this.ensureUser(userId);
     const alreadySeated = seatedPlayers(room).find((player) => player.userId === userId);
     if (alreadySeated) {
@@ -207,6 +222,10 @@ export class RoomService {
     const preferred = Number.isInteger(seat) && seat >= 0 && seat < MAX_SEATS && !used.has(seat) ? seat : undefined;
     const chosenSeat = preferred ?? [...Array(MAX_SEATS).keys()].find((value) => !used.has(value));
     if (chosenSeat === undefined) throw httpError(409, '没有可用座位');
+    const tournamentMove = Boolean(internal.tournamentMove);
+    const tournamentBuyIn = room.tournament ? Math.floor(Number(internal.buyIn ?? 0)) : 0;
+    if (room.tournament && (!Number.isSafeInteger(tournamentBuyIn) || tournamentBuyIn <= 0)) throw httpError(400, '锦标赛带入筹码无效');
+    if (room.tournament && !tournamentMove && userBeans(user) < tournamentBuyIn) throw httpError(400, '账户豆子不足以报名');
     const player = {
       id: randomUUID(),
       userId,
@@ -224,14 +243,24 @@ export class RoomService {
       lastAction: null,
       cards: [],
       handType: null,
-      startingBeans: userBeans(user),
-      left: false
+      startingBeans: room.tournament ? tournamentBuyIn : userBeans(user),
+      left: false,
+      tournamentEntryId:internal.tournament?.entryId ?? null,
+      tournamentChips:room.tournament ? tournamentBuyIn : null,
+      tournamentExited:false
     };
+    if (room.tournament && !tournamentMove) user.beans = userBeans(user) - tournamentBuyIn;
     room.players.set(player.id, player);
     room.spectators.delete(userId);
     touch(room);
     appendEvent(room, 'player_joined', { userId, nickname: user.nickname, seat: chosenSeat });
     return player;
+  }
+
+  joinTournamentRoom(roomId, userId, input, tournament) {
+    return this.joinRoom(roomId, userId, input?.seat, {
+      tournament, buyIn:input?.buyIn, tournamentMove:Boolean(input?.moving)
+    });
   }
 
   leaveRoom(roomId, userId, { now } = {}) {
@@ -240,6 +269,10 @@ export class RoomService {
     const active = Boolean(player?.inRound && room.status === 'betting');
     if (player) {
       player.left = true;
+      if (room.tournament) {
+        player.tournamentChips = 0;
+        player.tournamentExited = true;
+      }
       if (active) player.folded = true;
       else player.inRound = false;
       appendEvent(room, 'player_left', { userId, seat: player.seat });
@@ -253,7 +286,7 @@ export class RoomService {
       this.promoteDealer(room);
     }
     touch(room);
-    if (seatedPlayers(room).length === 0 && room.spectators.size === 0) this.reclaimRoom(room.id);
+    if (!room.tournament && seatedPlayers(room).length === 0 && room.spectators.size === 0) this.reclaimRoom(room.id);
     return room;
   }
 
@@ -267,7 +300,7 @@ export class RoomService {
   }
 
   listRooms() {
-    return [...this.rooms.values()]
+    return [...this.rooms.values()].filter((room) => !room.tournament)
       .map((room) => {
         const players = seatedPlayers(room);
         const host = this.store.users.get(room.hostUserId);
@@ -290,6 +323,7 @@ export class RoomService {
     const room = this.room(roomId);
     if (enabled && !room.allowSpectators) throw httpError(403, '房主未开启观战');
     const player = seatedPlayers(room).find((item) => item.userId === userId);
+    if (enabled && room.tournament && player) throw httpError(409, '锦标赛玩家退出后即淘汰，不能切换为观战');
     if (enabled && player && !['waiting', 'settled'].includes(room.status)) throw httpError(409, '当前阶段不能切换观战');
     if (enabled) {
       if (player) player.left = true;
@@ -300,7 +334,7 @@ export class RoomService {
     }
     touch(room);
     appendEvent(room, enabled ? 'spectator_joined' : 'spectator_left', { userId });
-    if (seatedPlayers(room).length === 0 && room.spectators.size === 0) this.reclaimRoom(room.id);
+    if (!room.tournament && seatedPlayers(room).length === 0 && room.spectators.size === 0) this.reclaimRoom(room.id);
     return room;
   }
 
@@ -316,11 +350,11 @@ export class RoomService {
   startNextRound(roomId, userId, { now } = {}) {
     const room = this.room(roomId);
     if (!['waiting', 'settled'].includes(room.status)) throw httpError(409, '当前不能开始下一局');
-    if (room.dealerUserId && !seatedPlayers(room).some((player) => player.userId === room.dealerUserId && userBeans(this.user(player.userId)) > 0)) {
+    if (room.dealerUserId && !seatedPlayers(room).some((player) => player.userId === room.dealerUserId && playerBalance(room, player, this.user(player.userId)) > 0)) {
       this.promoteDealer(room);
     }
     if (room.dealerUserId && room.dealerUserId !== userId) throw httpError(403, '请由庄家开始下一局');
-    const players = seatedPlayers(room).filter((player) => !room.spectators.has(player.userId) && userBeans(this.user(player.userId)) > 0);
+    const players = seatedPlayers(room).filter((player) => !room.spectators.has(player.userId) && playerBalance(room, player, this.user(player.userId)) > 0);
     if (players.length < 2) throw httpError(409, '至少需要两名有豆玩家');
     if (players.length > MAX_SEATS) throw httpError(409, '房间人数超过上限');
     const ordered = players.sort((left, right) => left.seat - right.seat);
@@ -349,10 +383,10 @@ export class RoomService {
       player.lastAction = null;
       player.cards = cards.slice(index * 3, index * 3 + 3);
       player.handType = evaluateHand(player.cards).name;
-      player.startingBeans = userBeans(user);
-      const ante = Math.min(room.ante, userBeans(user));
+      player.startingBeans = playerBalance(room, player, user);
+      const ante = Math.min(room.ante, playerBalance(room, player, user));
       debit(room, player, user, ante);
-      if (userBeans(user) === 0) player.allIn = true;
+      if (playerBalance(room, player, user) === 0) player.allIn = true;
     });
     setTurn(room, dealer.allIn ? nextSeat(room, dealer.seat) : dealer.seat, now);
     touch(room);
@@ -393,12 +427,12 @@ export class RoomService {
     } else if (type === 'call') {
       amount = debit(room, player, user, actionCost({ level: room.level, seen: player.seen, action: 'call' }));
     } else if (type === 'raise') {
-      const raise = validateRaise({ amount: input.amount, level: room.level, balance: userBeans(user), seen: player.seen });
+      const raise = validateRaise({ amount: input.amount, level: room.level, balance: playerBalance(room, player, user), seen: player.seen });
       amount = debit(room, player, user, raise.charge);
       room.level = raise.base;
       room.roundActedSeats = [];
     } else if (type === 'all_in') {
-      amount = debit(room, player, user, userBeans(user));
+      amount = debit(room, player, user, playerBalance(room, player, user));
       player.allIn = true;
     } else {
       throw httpError(400, '未知动作');
@@ -524,12 +558,13 @@ export class RoomService {
     for (const player of players) {
       const payout = Number(payouts[player.id] ?? 0);
       const user = this.user(player.userId);
-      user.beans = userBeans(user) + payout;
+      if (room.tournament) player.tournamentChips = playerBalance(room, player, user) + payout;
+      else user.beans = userBeans(user) + payout;
       const net = netChange({ payout, totalContribution: player.totalContribution });
       player.revealed = true;
       player.mayReveal = false;
       player.handType = evaluateHand(player.cards).name;
-      results.push({ ...player, payout, net, beans: user.beans, settledOrder: player.actionSeq });
+      results.push({ ...player, payout, net, beans:room.tournament ? player.tournamentChips : user.beans, settledOrder: player.actionSeq });
     }
     const winner = selectDealer(results.map((result) => ({
       ...result,
@@ -542,10 +577,10 @@ export class RoomService {
     room.lastResults = results;
     for (const result of results) {
       const user = this.user(result.userId);
-      if (result.net > 0) user.wins = Number(user.wins ?? 0) + 1;
-      else if (result.net < 0) user.losses = Number(user.losses ?? 0) + 1;
+      if (!room.tournament && result.net > 0) user.wins = Number(user.wins ?? 0) + 1;
+      else if (!room.tournament && result.net < 0) user.losses = Number(user.losses ?? 0) + 1;
     }
-    appendRankingChanges(this.store, beforeRanking, snapshotRanking(this.store.users.values()));
+    if (!room.tournament) appendRankingChanges(this.store, beforeRanking, snapshotRanking(this.store.users.values()));
     appendEvent(room, 'round_settled', {
       winnerUserId: winner?.userId ?? null,
       dealerUserId: room.dealerUserId,
@@ -562,6 +597,51 @@ export class RoomService {
     });
     touch(room);
     return room;
+  }
+
+  extractTournamentPlayer(roomId, userId, { toRoomId } = {}) {
+    const room = this.room(roomId);
+    if (!room.tournament) throw httpError(409, '该房间不是锦标赛房间');
+    if (!['waiting','settled'].includes(room.status)) throw httpError(409, '只能在两局之间合并桌位');
+    const player = seatedPlayers(room).find((candidate) => candidate.userId === userId);
+    if (!player) throw httpError(404, '锦标赛玩家不在该桌');
+    const chips = Math.max(0, Number(player.tournamentChips ?? 0));
+    player.tournamentChips = 0;
+    player.left = true;
+    player.inRound = false;
+    if (room.hostUserId === userId) room.hostUserId = seatedPlayers(room)[0]?.userId ?? null;
+    appendEvent(room, 'tournament_player_moved', { userId, fromRoomId:room.id, toRoomId, chips });
+    touch(room);
+    return chips;
+  }
+
+  eliminateTournamentPlayer(roomId, userId) {
+    const room = this.room(roomId);
+    const player = seatedPlayers(room).find((candidate) => candidate.userId === userId);
+    if (!room.tournament || !player || Number(player.tournamentChips ?? 0) > 0) return false;
+    player.left = true;
+    player.inRound = false;
+    room.spectators.add(userId);
+    if (room.hostUserId === userId) room.hostUserId = seatedPlayers(room)[0]?.userId ?? null;
+    appendEvent(room, 'tournament_player_eliminated', { userId, seat:player.seat });
+    touch(room);
+    return true;
+  }
+
+  awardTournamentChampion(roomId, userId) {
+    const room = this.room(roomId);
+    if (!room.tournament || room.tournament.completed) return 0;
+    const player = seatedPlayers(room).find((candidate) => candidate.userId === userId);
+    if (!player) throw httpError(404, '冠军不在锦标赛牌桌');
+    const amount = Math.max(0, Number(player.tournamentChips ?? 0));
+    const user = this.user(userId);
+    user.beans = userBeans(user) + amount;
+    player.tournamentChips = 0;
+    room.tournament.completed = true;
+    room.status = 'finished';
+    appendEvent(room, 'tournament_champion', { userId, nickname:user.nickname, prize:amount });
+    touch(room);
+    return amount;
   }
 
   addMessage(roomId, userId, text, { now } = {}) {
@@ -589,11 +669,19 @@ export class RoomService {
 
   snapshot(roomId, userId) {
     const room = this.room(roomId);
-    return visibleRoom(room, {
+    const snapshot = visibleRoom(room, {
       userId,
       spectator: room.spectators.has(userId),
       titles: resolveUserTitles(this.store.users.values())
     });
+    if (room.tournament) {
+      snapshot.tournament = { ...room.tournament };
+      snapshot.players = snapshot.players.map((visible) => {
+        const player = [...room.players.values()].find((candidate) => candidate.id === visible.id);
+        return { ...visible, tournamentChips:Number(player?.tournamentChips ?? 0) };
+      });
+    }
+    return snapshot;
   }
 
   eventsSince(roomId, userId, after = 0) {

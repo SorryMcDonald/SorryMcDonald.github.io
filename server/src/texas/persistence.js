@@ -128,7 +128,7 @@ async function persistHand(client, room) {
     if (result) {
       const stats=await client.query(`UPDATE texas_hand_players SET stats_applied=true
         WHERE hand_id=$1 AND user_id=$2 AND stats_applied=false RETURNING user_id`, [room.hand.id,player.userId]);
-      if (stats.rows.length && result.net !== 0) await client.query(`UPDATE users SET
+      if (!room.tournament && stats.rows.length && result.net !== 0) await client.query(`UPDATE users SET
         wins=wins+$2,losses=losses+$3 WHERE id=$1`, [player.userId,result.net>0?1:0,result.net<0?1:0]);
     }
     if (player.holeCards?.length === 2) await client.query(`INSERT INTO texas_hole_cards (hand_id,user_id,cards)
