@@ -59,7 +59,10 @@ function permanentSchedule(timestamp) {
     kind:'permanent',
     key:`permanent:${key}`,
     opensAt:new Date(opensAtMs).toISOString(),
-    registrationClosesAt:new Date(opensAtMs).toISOString()
+    // Keep the original PostgreSQL CHECK (closes_at > opens_at) valid. The
+    // permanent registration window is still open before the slot starts;
+    // this one-millisecond boundary is only a persistence sentinel.
+    registrationClosesAt:new Date(opensAtMs + 1).toISOString()
   };
 }
 
