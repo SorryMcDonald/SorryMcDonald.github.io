@@ -429,12 +429,34 @@ function addFeed(text) {
 }
 
 function updateCountdown() {
-  // Turn deadlines are retained only for backwards-compatible persisted
-  // state. Production no longer displays or acts on an automatic timeout.
+  const room = state.room;
+  const countdown = document.querySelector('.player-seat.current .turn-countdown');
+  if (!room || room.status !== 'betting' || !room.turnDeadlineAt || !countdown) return;
+  const milliseconds = new Date(room.turnDeadlineAt).getTime() - Date.now();
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  countdown.textContent = `${seconds}s`;
+  countdown.classList.toggle('danger', seconds <= 10);
+  const key = `${room.roundNumber}:${room.currentTurn}:${room.turnDeadlineAt}`;
+  if (seconds <= 10 && seconds > 0 && state.dangerPlayedKey !== key) {
+    state.dangerPlayedKey = key;
+    playEffect('danger');
+  }
+  if (seconds === 0 && state.countdownRefreshKey !== key) {
+    state.countdownRefreshKey = key;
+    window.setTimeout(() => loadRoom().catch(() => {}), 350);
+  }
 }
 
 function startCountdown() {
-  stopCountdown();
+  const room = state.room;
+  const key = room?.turnDeadlineAt ?? null;
+  if (state.countdownKey !== key) {
+    if (state.countdownTimer) clearInterval(state.countdownTimer);
+    state.countdownTimer = null;
+    state.countdownKey = key;
+    if (key) state.countdownTimer = window.setInterval(updateCountdown, 250);
+  }
+  updateCountdown();
 }
 
 function stopCountdown() {

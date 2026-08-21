@@ -66,7 +66,7 @@ function persistenceRetryDelay(retryAttempt) {
 }
 
 export class RoomLifecycleController {
-  constructor({ service, persistence, broadcastRoom, broadcastGlobal, reclaimRoomSockets, clock, autoTimeout = Boolean(clock), onError, mutationQueue } = {}) {
+  constructor({ service, persistence, broadcastRoom, broadcastGlobal, reclaimRoomSockets, clock, autoTimeout = true, onError, mutationQueue } = {}) {
     this.service = service;
     this.persistence = persistence;
     this.broadcastRoom = broadcastRoom;

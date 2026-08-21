@@ -74,7 +74,7 @@ describe('production runtime persistence', () => {
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: secondCookie }, payload: {} });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
 
-    expect(app.lifecycle.turnTimers.has(room.id)).toBe(false);
+    expect(app.lifecycle.turnTimers.has(room.id)).toBe(true);
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: firstCookie }, payload: {} });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: secondCookie }, payload: {} });
     expect(deleted).toEqual([room.id]);

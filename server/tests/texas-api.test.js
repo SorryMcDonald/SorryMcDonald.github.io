@@ -57,7 +57,7 @@ describe('Texas API contract',() => {
     const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
     await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{} });
     expect((await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} })).statusCode).toBe(200);
-    expect(app.texasLifecycle.turnTimers.has(room.id)).toBe(false);
+    expect(app.texasLifecycle.turnTimers.has(room.id)).toBe(true);
     await app.close();
   });
 

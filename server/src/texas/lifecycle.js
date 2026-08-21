@@ -41,7 +41,7 @@ function restoreUsers(store, snapshot) {
 }
 
 export class TexasLifecycleController {
-  constructor({ service, persistence, broadcastRoom, reclaimRoomSockets, clock, autoTimeout = Boolean(clock), mutationQueue, onError } = {}) {
+  constructor({ service, persistence, broadcastRoom, reclaimRoomSockets, clock, autoTimeout = true, mutationQueue, onError } = {}) {
     this.service = service;
     this.persistence = persistence;
     this.broadcastRoom = broadcastRoom;

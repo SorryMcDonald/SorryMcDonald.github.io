@@ -205,8 +205,14 @@ function openSkillDialog() {
 }
 
 function renderCountdown() {
-  clearInterval(state.countdown);
-  $('turnCountdown').hidden = true;
+  clearInterval(state.countdown); const node = $('turnCountdown'); const room = state.room;
+  if (!room?.turnDeadlineAt || room.currentTurn < 0 || room.status === 'settled') { node.hidden = true; return; }
+  node.hidden = false;
+  const tick = () => {
+    const remain = Math.max(0, Math.ceil((Date.parse(room.turnDeadlineAt) - Date.now()) / 1000)); node.textContent = `${remain}s`;
+    node.classList.toggle('danger', remain <= 10); if (remain <= 0) clearInterval(state.countdown);
+  };
+  tick(); state.countdown = setInterval(tick, 1000);
 }
 
 function renderRoom() {
