@@ -695,11 +695,6 @@ export class RoomService {
     player.tournamentChips = 0;
     room.tournament.completed = true;
     room.status = 'finished';
-    if (amount > 0) this.ledger(room, {
-      idempotencyKey:`zhajinhua:${room.id}:tournament-prize:${userId}`,
-      userId, roomId:room.id, roundId:room.round?.id ?? null, entryType:'tournament_prize', amount,
-      balanceAfter:user.beans, metadata:{ tournamentTrackId:room.tournament.trackId }
-    });
     appendEvent(room, 'tournament_champion', { userId, nickname:user.nickname, prize:amount });
     touch(room);
     return amount;

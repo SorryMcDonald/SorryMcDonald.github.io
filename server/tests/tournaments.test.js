@@ -75,6 +75,20 @@ describe('weekly tournaments', () => {
     await app.close();
   });
 
+  it('settles a permanent Zhajinhua champion without requiring a Texas ledger', async () => {
+    const clock = clockAt('2026-08-20T05:05:00.000Z');
+    const app = await buildApp({ logger:false, tournamentClock:clock });
+    const user = { id:'special-zjh-user', nickname:'special-zjh-user', beans:100000, wins:0, losses:0 };
+    app.auth.store.users.set(user.id, user);
+    const room = app.rooms.createTournamentRoom(user.id, { buyIn:200000, ante:1000, variant:'laizi' }, {
+      trackId:'special-zjh-track', game:'laizi_zhajinhua', variant:'laizi',
+      virtualChips:true, championPrize:500000
+    });
+    expect(() => app.rooms.awardTournamentChampion(room.id, user.id)).not.toThrow();
+    expect(user.beans).toBe(600000);
+    await app.close();
+  });
+
   it('automatically creates another Texas table when the first table is full', async () => {
     const clock = clockAt('2026-08-19T04:05:00.000Z');
     const app = await buildApp({ logger:false, tournamentClock:clock, attachGateway:true });
