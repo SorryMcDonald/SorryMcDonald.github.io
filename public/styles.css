@@ -754,6 +754,25 @@ footer{padding:16px 0;color:#68756d}
 
 dialog::backdrop{background:rgba(4,10,7,.78)}
 .modal-panel{background:#151d18}
+
+.modal-panel.rules-panel{width:min(94vw,720px);max-height:min(84vh,760px);padding:26px 30px;overflow-y:auto}
+.rules-panel .panel-heading{position:sticky;top:-26px;z-index:1;margin:-1px 0 0;padding:1px 0 13px;background:#151d18}
+.rules-eyebrow{margin:0 0 3px;color:var(--gold);font-size:10px;font-weight:800}
+.rules-content{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;padding-top:18px}
+.rules-section{padding:0 0 18px}
+.rules-section h3{margin:0 0 8px;color:#f1d27a;font-size:14px}
+.rules-section p,.rules-section li{color:#bdc6bf;font-size:12px;line-height:1.7}
+.rules-section p{margin:0}
+.rules-section ul{margin:0;padding-left:18px}
+.rules-section li+li{margin-top:5px}
+.hand-ranking{margin:0;padding:0;list-style:none;counter-reset:rule-rank}
+.hand-ranking li{display:grid;grid-template-columns:22px 58px minmax(0,1fr);gap:6px;padding:5px 0;border-bottom:1px solid #29332e;counter-increment:rule-rank}
+.hand-ranking li:before{color:#7f8d83;content:counter(rule-rank);font-size:10px}
+.hand-ranking strong{color:#eef1e9}
+.hand-ranking span{color:#8f9b92}
+.rules-note{grid-column:1/-1;padding-top:15px;border-top:1px solid #344038}
+
+@media(max-width:620px){.modal-panel.rules-panel{width:min(94vw,520px);max-height:88vh;padding:22px 18px}.rules-panel .panel-heading{top:-22px}.rules-content{grid-template-columns:1fr;gap:0;padding-top:14px}.rules-note{grid-column:auto}}
 .raise-presets{gap:6px}
 .compare-target-button{border-color:#39483e;background:#1d2922}
 .setting-row{border-bottom-color:#2e3a32}

@@ -556,6 +556,8 @@ $('raiseButton').addEventListener('click',openRaise);
 $('raiseForm').addEventListener('submit',async(event) => { event.preventDefault(); const amount = Number($('raiseAmount').value); const allowed = state.room?.allowedActions ?? {}; if (!Number.isFinite(amount) || amount < Number(allowed.minRaiseTo) || amount > Number(allowed.maxRaiseTo)) { text('raiseError','请输入有效的加注额度'); return; } $('raiseDialog').close(); await submitAction($('raiseButton').dataset.action,amount); });
 $('leaderboardButton').addEventListener('click',showLeaderboard); $('backButton').addEventListener('click',() => showGame('table'));
 document.querySelectorAll('[data-rank]').forEach((button) => button.addEventListener('click',() => loadLeaderboard(button.dataset.rank)));
+$('rulesButton').addEventListener('click',() => $('rulesDialog').showModal());
+$('rulesDialog').addEventListener('click',(event) => { if (event.target === $('rulesDialog')) $('rulesDialog').close(); });
 $('settingsButton').addEventListener('click',() => { $('musicToggle').checked = state.musicEnabled; $('effectsToggle').checked = state.effectsEnabled; $('motionSelect').value = state.motionMode; $('settingsDialog').showModal(); });
 $('settingsForm').addEventListener('submit',saveSettings); document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click',() => $(button.dataset.close).close()));
 document.querySelectorAll('button[data-nav]').forEach((button) => button.addEventListener('click',() => {

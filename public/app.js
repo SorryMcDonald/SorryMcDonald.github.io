@@ -973,6 +973,8 @@ $('raiseForm').addEventListener('submit', async (event) => {
 $('chatForm').addEventListener('submit', sendChat);
 $('refillButton').addEventListener('click', () => $('refillDialog').showModal());
 $('refillForm').addEventListener('submit', submitRefill);
+$('rulesButton').addEventListener('click', () => $('rulesDialog').showModal());
+$('rulesDialog').addEventListener('click', (event) => { if (event.target === $('rulesDialog')) $('rulesDialog').close(); });
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => $(button.dataset.closeDialog).close()));
 document.querySelectorAll('.tab-button').forEach((button) => button.addEventListener('click', () => loadLeaderboard(button.dataset.kind)));
 $('settingsButton').addEventListener('click', () => {

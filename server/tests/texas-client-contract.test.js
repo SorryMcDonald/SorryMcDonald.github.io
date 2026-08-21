@@ -34,6 +34,26 @@ describe('Texas browser client contract',() => {
     expect(css).toMatch(/@media\(max-width:620px\)/);
   });
 
+  it('provides accessible rule dialogs for Texas and Zhajinhua',async() => {
+    const [texasHtml, texasJs, zhajinhuaHtml, zhajinhuaJs] = await Promise.all([
+      readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8'),
+      readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8'),
+      readFile(new URL('../../public/index.html',import.meta.url),'utf8'),
+      readFile(new URL('../../public/app.js',import.meta.url),'utf8')
+    ]);
+    for (const html of [texasHtml, zhajinhuaHtml]) {
+      expect(html).toContain('id="rulesButton"');
+      expect(html).toContain('id="rulesDialog"');
+      expect(html).toContain('aria-labelledby="rulesTitle"');
+    }
+    expect(texasHtml).toContain('同花顺');
+    expect(texasHtml).toContain('未被其他玩家匹配的多余下注会返还');
+    expect(zhajinhuaHtml).toContain('豹子');
+    expect(zhajinhuaHtml).toContain('发起比牌的一方判负');
+    expect(texasJs).toContain("$('rulesDialog').showModal()");
+    expect(zhajinhuaJs).toContain("$('rulesDialog').showModal()");
+  });
+
   it('treats permitted spectating as a single global-open-card mode',async() => {
     const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
     const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');

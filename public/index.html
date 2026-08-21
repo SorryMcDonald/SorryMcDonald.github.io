@@ -21,6 +21,7 @@
         <button id="leaderboardButton" class="nav-link" type="button" data-nav="leaderboard">排行榜</button>
       </nav>
       <div class="top-actions" aria-label="账号导航">
+        <button id="rulesButton" class="icon-button" type="button" aria-label="查看炸金花规则" title="游戏规则">?</button>
         <button id="settingsButton" class="icon-button top-settings" type="button" aria-label="设置" title="设置">⚙</button>
         <div class="account-summary"><span id="accountLabel" class="account-label">未登录</span><span id="accountTitles" class="account-titles"></span></div>
       </div>
@@ -103,6 +104,18 @@
   </div>
 
   <template id="turnCountdown"><span class="turn-countdown" aria-label="行动倒计时"></span></template>
+
+  <dialog id="rulesDialog" aria-labelledby="rulesTitle">
+    <div class="modal-panel rules-panel">
+      <div class="panel-heading"><div><p class="rules-eyebrow">HOW TO PLAY</p><h2 id="rulesTitle">炸金花规则</h2></div><button class="icon-button" data-close-dialog="rulesDialog" type="button" aria-label="关闭规则">×</button></div>
+      <div class="rules-content">
+        <section class="rules-section"><h3>基本流程</h3><p>每局开始时所有玩家支付底注并获得 3 张暗牌。轮到你时可看牌、跟注、加注、梭哈、比牌或弃牌；只剩一名未弃牌玩家时，该玩家赢得可争夺的底池。</p></section>
+        <section class="rules-section"><h3>下注与比牌</h3><ul><li>暗牌跟注按当前档位支付；看牌后，跟注和加注费用为暗牌的 2 倍。</li><li>发起比牌的基础费用为跟注的 2 倍，看牌后仍需计算明牌倍率；败者立即出局。</li><li>双方牌型和点数完全相同时，发起比牌的一方判负。</li><li>筹码不足时可梭哈，只能争夺按自己累计投入形成的主池或边池，未被匹配的多余下注会返还。</li></ul></section>
+        <section class="rules-section"><h3>牌型大小</h3><ol class="hand-ranking"><li><strong>豹子</strong><span>三张点数相同</span></li><li><strong>顺金</strong><span>同花色的连续三张</span></li><li><strong>金花</strong><span>同花色但不连续</span></li><li><strong>顺子</strong><span>连续三张，A23 为最小顺子</span></li><li><strong>对子</strong><span>两张点数相同</span></li><li><strong>单张</strong><span>依次比较最高牌</span></li></ol></section>
+        <section class="rules-section rules-note"><h3>房间规则</h3><p>牌局开始后加入的玩家先等待下一局。下一局由房主手动开始；观战者只能查看牌局，不能下注或发送房间聊天。</p></section>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="raiseDialog" aria-labelledby="raiseTitle">
     <form id="raiseForm" class="modal-panel">
