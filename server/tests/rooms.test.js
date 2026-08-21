@@ -210,6 +210,65 @@ describe('room directory and departure', () => {
     expect(room.pot).toBe([...room.players.values()].reduce((sum, player) => sum + (player.inRound ? Number(player.totalContribution) : 0), 0));
     expect(broke.inRound).toBe(false);
   });
+
+  it('clears a departed player round state before a seen caller leaves the next round', async () => {
+    const app = await buildApp({ logger: false });
+    const first = await register(app, 'stale-round-a@example.com', '离场甲');
+    const second = await register(app, 'stale-round-b@example.com', '留场乙');
+    const third = await register(app, 'stale-round-c@example.com', '留场丙');
+    const room = (await app.inject({
+      method: 'POST', url: '/api/rooms', headers: { cookie: first.cookie }, payload: {}
+    })).json().room;
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: second.cookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: third.cookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: first.cookie }, payload: {} });
+
+    const firstRound = app.rooms.room(room.id);
+    const secondPlayer = [...firstRound.players.values()].find((player) => player.userId === second.user.id);
+    const thirdPlayer = [...firstRound.players.values()].find((player) => player.userId === third.user.id);
+    secondPlayer.cards = [{ rank: 14, suit: 'S' }, { rank: 14, suit: 'H' }, { rank: 14, suit: 'D' }];
+    thirdPlayer.cards = [{ rank: 2, suit: 'S' }, { rank: 3, suit: 'H' }, { rank: 5, suit: 'D' }];
+
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: first.cookie }, payload: {}
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: second.cookie },
+      payload: { action: 'compare', actionSeq: 1, targetSeat: thirdPlayer.seat }
+    })).statusCode).toBe(200);
+
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: second.cookie }, payload: {}
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: second.cookie },
+      payload: { action: 'call', actionSeq: 1 }
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: third.cookie },
+      payload: { action: 'see' }
+    })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: third.cookie },
+      payload: { action: 'call', actionSeq: 1 }
+    })).statusCode).toBe(200);
+
+    const left = await app.inject({
+      method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: third.cookie }, payload: {}
+    });
+    expect(left.statusCode).toBe(200);
+    const settled = app.rooms.room(room.id);
+    expect(settled.status).toBe('settled');
+    const stalePlayer = [...settled.players.values()].find((player) => player.userId === first.user.id);
+    expect(stalePlayer).toMatchObject({
+      inRound:false, folded:false, allIn:false, seen:false, revealed:false,
+      mayReveal:false, currentBet:0, totalContribution:0, actionSeq:0,
+      lastAction:null, cards:[], handType:null, startingBeans:null
+    });
+    expect([...settled.players.values()].filter((player) => player.inRound)
+      .reduce((sum, player) => sum + player.totalContribution, 0)).toBe(settled.pot);
+    await app.close();
+  });
 });
 
 function gameStore(count = 7) {

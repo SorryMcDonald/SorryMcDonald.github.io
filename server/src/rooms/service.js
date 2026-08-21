@@ -409,19 +409,10 @@ export class RoomService {
     room.roundActedSeats = [];
     room.round = { id: randomUUID(), idempotency: false };
     const cards = shuffle(roundDeck(room), this.randomInteger);
-    // Players who ran out of beans remain seated for the lobby, but must not
-    // remain part of the next round's accounting. Clear the previous hand
-    // marker before selecting the players who can actually enter this round.
-    for (const player of seatedPlayers(room)) {
+    // Retained player records include broke seats and players who left during
+    // the previous hand. None of their round-scoped state belongs to this hand.
+    for (const player of room.players.values()) {
       player.inRound = false;
-      player.currentBet = 0;
-      player.totalContribution = 0;
-      player.folded = false;
-      player.allIn = false;
-    }
-    ordered.forEach((player, index) => {
-      const user = this.user(player.userId);
-      player.inRound = true;
       player.folded = false;
       player.allIn = false;
       player.seen = false;
@@ -431,6 +422,13 @@ export class RoomService {
       player.totalContribution = 0;
       player.actionSeq = 0;
       player.lastAction = null;
+      player.cards = [];
+      player.handType = null;
+      player.startingBeans = null;
+    }
+    ordered.forEach((player, index) => {
+      const user = this.user(player.userId);
+      player.inRound = true;
       player.cards = cards.slice(index * 3, index * 3 + 3);
       player.handType = evaluateRoundHand(room, player.cards).name;
       player.startingBeans = playerBalance(room, player, user);
