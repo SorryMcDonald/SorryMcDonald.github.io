@@ -349,10 +349,18 @@ export class TexasService {
 
   useSkill(roomId, userId, input = {}) {
     const room = this.room(roomId);
+    const clientActionId = String(input.clientActionId ?? '');
+    if (clientActionId.length < 8) throw httpError(400, '缺少有效的客户端动作编号');
+    if (room.processedActions.includes(clientActionId)) return room;
     if (room.variant !== 'wild') throw httpError(409, '当前牌桌没有百变技能');
     if (!['preflop', 'flop'].includes(room.status)) throw httpError(409, '技能只能在翻牌前或翻牌圈使用');
+    if (input.version !== undefined && Number(input.version) !== room.version) throw httpError(409, '房间状态已更新，请同步后重试');
+    if (input.handId && input.handId !== room.hand?.id) throw httpError(409, '该操作不属于当前手牌');
     const player = activePlayers(room).find((value) => value.userId === userId && value.inHand && !value.folded && !value.allIn);
     if (!player) throw httpError(403, '玩家不在当前手牌中');
+    if (room.currentTurn !== player.seat) throw httpError(409, '技能只能在你的行动回合使用');
+    const actionSeq = Number(input.actionSeq);
+    if (!Number.isInteger(actionSeq) || actionSeq !== player.actionSeq + 1) throw httpError(409, '动作序号错误');
     if (player.skillUsed) throw httpError(409, '每手牌最多使用一个技能');
     const skill = String(input.skill ?? '');
     if (!player.skills?.includes(skill)) throw httpError(400, '你没有这张技能卡');
@@ -363,7 +371,9 @@ export class TexasService {
     if (['snitch', 'freeze', 'detective'].includes(skill) && !boardPhase) throw httpError(409, '该技能只能在翻牌圈使用');
     if (['snitch', 'freeze', 'detective'].includes(skill) && !target) throw httpError(400, '请选择技能目标');
     if (skill === 'peek') {
-      player.skillInfo = { peek: room.deck.at(-1) ?? null };
+      // The top card is burned before a public card is dealt. Peek reveals
+      // the next public card, not the hidden burn card.
+      player.skillInfo = { peek: room.deck.at(-2) ?? room.deck.at(-1) ?? null };
     } else if (skill === 'swap') {
       const index = Number(input.cardIndex);
       if (![0, 1].includes(index)) throw httpError(400, '请选择一张底牌');
@@ -389,8 +399,15 @@ export class TexasService {
       player.skillInfo = { detective: { userId:target.userId, nickname:target.nickname, hint:evaluation?.level >= 7 ? '强牌' : evaluation?.level >= 4 ? '中等牌' : '大概率诈唬' } };
     }
     player.skillUsed = true;
+    player.actionSeq = actionSeq;
+    room.processedActions.push(clientActionId);
+    room.pendingClientActions ??= [];
+    room.pendingClientActions.push({ clientActionId, roomId:room.id, handId:room.hand.id, userId, roomVersion:room.version + 1 });
+    if (room.processedActions.length > 200) room.processedActions.splice(0, room.processedActions.length - 200);
     appendEvent(room, 'texas_skill_used', { userId, nickname:player.nickname, skill, targetUserId:target?.userId ?? null });
-    return this.touch(room);
+    const updated = this.touch(room);
+    this.refreshTurnDeadline(room);
+    return updated;
   }
 
   timeoutFold(roomId, context = {}) {
@@ -447,7 +464,16 @@ export class TexasService {
       const availableCards = [...player.holeCards, ...room.board];
       player.evaluation = availableCards.length >= 5 ? evaluateRoomHand(room, availableCards) : null;
     }
-    const { payouts, pots } = calculateTexasPots(handPlayersBefore, room.dealerSeat);
+    // Once every opponent has folded, the sole contender wins the entire
+    // escrowed pot. Side-pot layering must not refund folded players' bets.
+    let payouts;
+    let pots;
+    if (uncontested) {
+      payouts = Object.fromEntries(handPlayersBefore.map((player) => [player.id, player.id === contenders(room)[0]?.id ? contributionTotal : 0]));
+      pots = contributionTotal > 0 ? [{ amount: contributionTotal, eligiblePlayerIds:[contenders(room)[0].id], winnerIds:[contenders(room)[0].id] }] : [];
+    } else {
+      ({ payouts, pots } = calculateTexasPots(handPlayersBefore, room.dealerSeat));
+    }
     room.pots = pots;
     const results = [];
     for (const player of handPlayersBefore) {

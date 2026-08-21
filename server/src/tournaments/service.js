@@ -149,6 +149,22 @@ export class TournamentService {
     return edition;
   }
 
+  // Called by the server lifecycle controller so a tournament continues to
+  // advance even when nobody happens to request the lobby endpoint.
+  tick(now = this.now()) {
+    const editions = [this.editionFor('weekly', now), this.editionFor('permanent', now)];
+    const rooms = [];
+    for (const edition of editions) {
+      this.refreshEdition(edition, now);
+      for (const track of edition.tracks.values()) {
+        for (const table of track.tables.values()) {
+          if (table.status === 'active') rooms.push({ game:track.game, roomId:table.roomId, editionId:edition.id });
+        }
+      }
+    }
+    return { editions, rooms };
+  }
+
   entryForUser(track, userId) {
     return [...track.entries.values()].find((entry) => entry.userId === userId) ?? null;
   }
@@ -332,6 +348,11 @@ export class TournamentService {
     }
     const winner = active[0];
     const service = this.gameService(track.game);
+    // Do not award a champion while the last table is still in a hand. The
+    // next action/timeout will reconcile it again after the hand settles.
+    let winnerRoom;
+    try { winnerRoom = service.room(winner.roomId); } catch { return false; }
+    if (!safeRoomStatus(track.game, winnerRoom.status)) return false;
     const prize = service.awardTournamentChampion(winner.roomId, winner.userId);
     winner.status = 'champion';
     winner.chips = 0;

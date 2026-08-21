@@ -65,6 +65,41 @@ export async function buildApp(options = {}) {
   app.lifecycle.onRoomMutation = (roomId) => app.reconcileTournamentRoom('zhajinhua', roomId);
   app.texasLifecycle.onRoomMutation = (roomId) => app.reconcileTournamentRoom('texas', roomId);
 
+  // Tournament state must not depend on somebody polling the lobby. Keep the
+  // tick in-process for the single-server deployment; a multi-node setup can
+  // replace this with a database advisory-lock worker later.
+  const tournamentTickIntervalMs = Math.max(5_000, Number(options.tournamentTickMs ?? 30_000));
+  let tournamentTickTimer = null;
+  let tournamentTickInFlight = null;
+  const runTournamentTick = async () => {
+    if (tournamentTickInFlight) return tournamentTickInFlight;
+    tournamentTickInFlight = (async () => {
+      const { editions, rooms } = app.tournaments.tick();
+      const seenRooms = new Set();
+      for (const item of rooms) {
+        const key = `${item.game}:${item.roomId}`;
+        if (seenRooms.has(key)) continue;
+        seenRooms.add(key);
+        try { await app.reconcileTournamentRoom(item.game, item.roomId); }
+        catch (error) { app.log.warn({ err:error, game:item.game, roomId:item.roomId }, 'tournament tick room reconciliation failed'); }
+      }
+      for (const edition of editions) {
+        try { await options.tournamentPersistence?.flushEdition?.(edition.id); }
+        catch (error) { app.log.warn({ err:error, editionId:edition.id }, 'tournament tick persistence failed'); }
+      }
+    })().finally(() => { tournamentTickInFlight = null; });
+    return tournamentTickInFlight;
+  };
+  app.decorate('runTournamentTick', runTournamentTick);
+  if (options.tournamentScheduler !== false) {
+    tournamentTickTimer = setInterval(() => { runTournamentTick().catch((error) => app.log.warn({ err:error }, 'tournament tick failed')); }, tournamentTickIntervalMs);
+    tournamentTickTimer.unref?.();
+  }
+  app.addHook('onClose', async () => {
+    if (tournamentTickTimer) clearInterval(tournamentTickTimer);
+    if (tournamentTickInFlight) await tournamentTickInFlight.catch(() => {});
+  });
+
   if (options.attachGateway) {
     const gateway = new WebSocketGateway({
       service: app.rooms,

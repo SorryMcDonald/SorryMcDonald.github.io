@@ -191,7 +191,7 @@ function renderActions() {
   text('actionCostLabel', allowed.toCall ? `待跟 ${money(allowed.toCall)}` : '等待你的行动'); text('beansLabel', `${money(player?.stack)} 筹码`);
   const skillButton = $('skillButton');
   skillButton.hidden = room.variant !== 'wild' || !player?.inHand;
-  skillButton.disabled = state.acting || Boolean(player?.skillUsed) || !(player?.skills?.length);
+  skillButton.disabled = state.acting || Boolean(player?.skillUsed) || !(player?.skills?.length) || room.currentTurn !== player?.seat;
 }
 
 const SKILL_LABELS = { peek:'窥视', swap:'单张置换', mulligan:'重发底牌', snitch:'窥探', freeze:'冻结', detective:'侦探' };
@@ -581,13 +581,17 @@ $('actionBar').querySelector('.action-grid').append($('skillButton'));
 $('skillButton').addEventListener('click',openSkillDialog);
 $('skillForm').addEventListener('submit',async(event) => {
   event.preventDefault(); $('skillError').textContent='';
+  if (state.acting || !state.room) return;
+  state.acting = true; renderActions();
   try {
-    const skill=$('skillSelect').value; const body={ skill };
+    const player = me();
+    const skill=$('skillSelect').value; const body={ skill, handId:state.room.handId, version:state.room.version, actionSeq:Number(player?.actionSeq ?? 0) + 1, clientActionId:uid() };
     if (['snitch','freeze','detective'].includes(skill)) body.targetUserId=$('skillTarget').value;
     if (skill === 'swap') body.cardIndex=Number($('skillCardIndex').value);
     applyRoomSnapshot((await api(`/api/texas/rooms/${state.room.id}/skills`,{ method:'POST',body })).room);
     $('skillDialog').close();
-  } catch (error) { $('skillError').textContent=error.message; }
+  } catch (error) { $('skillError').textContent=error.message; await loadRoom(); }
+  finally { state.acting = false; renderActions(); }
 });
 $('rulesButton').addEventListener('click',() => $('rulesDialog').showModal());
 $('rulesDialog').addEventListener('click',(event) => { if (event.target === $('rulesDialog')) $('rulesDialog').close(); });

@@ -15,6 +15,19 @@ function act(service, room, userId, type, amount) {
   return service.action(room.id, userId, { type, amount, handId:room.hand.id, version:room.version, actionSeq:player.actionSeq+1, clientActionId:`action-${userId}-${player.actionSeq+1}-${room.version}` });
 }
 
+function wildSetup() {
+  const users = new Map([
+    ['u0', { id:'u0', nickname:'鐜╁0', beans:0, wins:0, losses:0 }],
+    ['u1', { id:'u1', nickname:'鐜╁1', beans:0, wins:0, losses:0 }]
+  ]);
+  const service = new TexasService({ store:{ users, banners:[] } });
+  const tournament = { trackId:'wild-track', virtualChips:200000, minRaise:1000 };
+  const room = service.createRoom('u0', { variant:'wild', smallBlind:10, bigBlind:20, minBuyIn:400, maxBuyIn:2000, buyIn:1000 }, { tournament });
+  service.joinRoom(room.id, 'u1', { buyIn:1000, seat:1 }, { tournament });
+  service.startHand(room.id, 'u0');
+  return { service, users, room };
+}
+
 describe('Texas room state machine', () => {
   it('uses 100/200 blinds, a 10,000 default buy-in and a fixed 100 raise increment', () => {
     const users = new Map([
@@ -145,6 +158,50 @@ describe('Texas room state machine', () => {
     expect(room.version).toBe(version);
     const next = [...room.players.values()].find((value) => value.seat === room.currentTurn);
     expect(() => service.action(room.id, next.userId, { type:'check', handId:room.hand.id, version:0, actionSeq:1, clientActionId:'stale-action-id' })).toThrow(/状态已更新/);
+  });
+
+  it('validates wild skill turn context, supports idempotent retries, and advances action sequence', () => {
+    const { service, room } = wildSetup();
+    const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    const other = [...room.players.values()].find((player) => player.id !== actor.id);
+    actor.skills = ['peek'];
+    other.skills = ['peek'];
+    const payload = {
+      skill:'peek', version:room.version, handId:room.hand.id, actionSeq:1,
+      clientActionId:'wild-skill-retry-1'
+    };
+    const expectedPeek = room.deck.at(-2);
+    service.useSkill(room.id, actor.userId, payload);
+    expect(actor.skillInfo.peek).toEqual(expectedPeek);
+    expect(actor.actionSeq).toBe(1);
+    const version = room.version;
+    service.useSkill(room.id, actor.userId, payload);
+    expect(room.version).toBe(version);
+    expect(() => service.useSkill(room.id, other.userId, {
+      skill:'peek', version, handId:room.hand.id, actionSeq:1, clientActionId:'wild-out-of-turn'
+    })).toThrow(/行动回合/);
+    expect(() => service.useSkill(room.id, actor.userId, {
+      skill:'peek', version:version - 1, handId:room.hand.id, actionSeq:2, clientActionId:'wild-stale-version'
+    })).toThrow(/状态已更新/);
+    expect(() => service.useSkill(room.id, actor.userId, {
+      skill:'peek', version, handId:'wrong-hand', actionSeq:2, clientActionId:'wild-wrong-hand'
+    })).toThrow(/当前手牌/);
+  });
+
+  it('awards the complete pot to the only contender after opponents fold', () => {
+    const { service, room } = setup(3);
+    service.startHand(room.id, 'u0');
+    const players = [...room.players.values()].sort((left, right) => left.seat - right.seat);
+    players[0].stack = 0; players[0].totalContribution = 100; players[0].folded = false;
+    players[1].stack = 0; players[1].totalContribution = 200; players[1].folded = true;
+    players[2].stack = 0; players[2].totalContribution = 200; players[2].folded = true;
+    players.forEach((player) => { player.inHand = true; });
+    room.pot = 500;
+    service.settle(room);
+    expect(players[0].stack).toBe(500);
+    expect(players[1].stack).toBe(0);
+    expect(players[2].stack).toBe(0);
+    expect(room.pots).toEqual([expect.objectContaining({ amount:500, winnerIds:[players[0].id] })]);
   });
 
   it('keeps a full big-blind bring-in when the blind is short all-in', () => {

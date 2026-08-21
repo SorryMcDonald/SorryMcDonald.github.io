@@ -198,6 +198,18 @@ describe('room directory and departure', () => {
     expect(secondMe.json().user.beans).toBe(100010);
     await app.close();
   });
+
+  it('clears broke seated players before the next round accounting starts', () => {
+    const { service, store, room } = startedService(3);
+    service.settle(room);
+    const broke = [...room.players.values()].find((player) => player.userId === 'user-2');
+    store.users.get(broke.userId).beans = 0;
+    service.promoteDealer(room);
+    const starter = room.dealerUserId;
+    expect(() => service.startNextRound(room.id, starter)).not.toThrow();
+    expect(room.pot).toBe([...room.players.values()].reduce((sum, player) => sum + (player.inRound ? Number(player.totalContribution) : 0), 0));
+    expect(broke.inRound).toBe(false);
+  });
 });
 
 function gameStore(count = 7) {

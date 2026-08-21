@@ -409,6 +409,16 @@ export class RoomService {
     room.roundActedSeats = [];
     room.round = { id: randomUUID(), idempotency: false };
     const cards = shuffle(roundDeck(room), this.randomInteger);
+    // Players who ran out of beans remain seated for the lobby, but must not
+    // remain part of the next round's accounting. Clear the previous hand
+    // marker before selecting the players who can actually enter this round.
+    for (const player of seatedPlayers(room)) {
+      player.inRound = false;
+      player.currentBet = 0;
+      player.totalContribution = 0;
+      player.folded = false;
+      player.allIn = false;
+    }
     ordered.forEach((player, index) => {
       const user = this.user(player.userId);
       player.inRound = true;
@@ -595,13 +605,15 @@ export class RoomService {
   }
 
   settle(room) {
-    if (room.status === 'settled' || !room.round || room.round.idempotency) return room;
-    room.round.idempotency = true;
+    if (room.status === 'settled' || !room.round) return room;
     const beforeRanking = snapshotRanking(this.store.users.values());
     const players = roundPlayers(room);
     const contributionTotal = players.reduce((sum, player) => sum + Number(player.totalContribution ?? 0), 0);
     const accountTotalBefore = players.reduce((sum, player) => sum + userBeans(this.user(player.userId)), 0);
     if (Number(room.pot) !== contributionTotal) throw new Error(`炸金花结算池子与玩家贡献不一致: pot=${room.pot}, contributed=${contributionTotal}`);
+    // Mark only after the invariant check. A recoverable validation failure
+    // must not leave a betting round permanently marked as settled.
+    room.round.idempotency = true;
     const payouts = calculateSidePotPayouts(players);
     const results = [];
     for (const player of players) {
