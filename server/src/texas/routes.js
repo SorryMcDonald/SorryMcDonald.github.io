@@ -69,6 +69,7 @@ export function registerTexasRoutes(app, options = {}) {
     return { room:service.snapshot(room.id,request.user.id) };
   });
   app.post('/api/texas/rooms/:roomId/start',{ preHandler:requireUser },async(request) => {
+    app.tournaments?.assertRoomStartAllowed('texas', request.params.roomId);
     const room=await mutate(request.params.roomId,() => service.startHand(request.params.roomId,request.user.id));
     await app.reconcileTournamentRoom?.('texas',room.id);
     return { room:service.snapshot(room.id,request.user.id) };

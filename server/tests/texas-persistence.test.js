@@ -34,6 +34,15 @@ describe('Texas PostgreSQL persistence contract',() => {
     expect(JSON.stringify(serializeRoom(room))).not.toMatch(/临时聊天/);
   });
 
+  it('restores the persisted minimum raise for a special tournament', () => {
+    const state = {
+      id:'wild-room', variant:'wild', minRaise:1000,
+      players:[], spectators:[], events:[], processedActions:[]
+    };
+
+    expect(deserializeRoom(state).minRaise).toBe(1000);
+  });
+
   it('does not write historical or incremental chat events to texas_actions', async () => {
     const users=new Map([['u1',{ id:'u1',nickname:'聊天过滤',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });

@@ -17,6 +17,9 @@ describe('tournament browser contract', () => {
     expect(client).toContain("/api/tournaments/current");
     expect(client).toContain("/api/tournaments/${game}/enter");
     expect(client).toContain('sessionStorage.setItem');
+    expect(client).toContain('enterRoom(data.gamePath, data.roomId)');
+    expect(client).toContain('enterRoom(track.gamePath, track.entry.roomId)');
+    expect(client).toMatch(/function enterRoom\(gamePath, roomId\)/);
     expect(client).not.toContain('setInterval(loadTournament');
   });
 });

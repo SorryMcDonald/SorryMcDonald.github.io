@@ -105,6 +105,17 @@ describe('Texas room state machine', () => {
     ]));
   });
 
+  it('keeps the special-tournament minimum raise after the flop is dealt', () => {
+    const { service, room } = wildSetup();
+    const first = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    act(service, room, first.userId, 'call');
+    const second = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    act(service, room, second.userId, 'check');
+
+    expect(room.status).toBe('flop');
+    expect(room.minRaise).toBe(1000);
+  });
+
   it('marks an uncontested settlement and does not publish the winner hand to the folded opponent', () => {
     const { service, room } = setup(2);
     service.startHand(room.id, 'u0');

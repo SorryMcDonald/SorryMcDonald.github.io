@@ -47,4 +47,19 @@ describe('tournament persistence', () => {
     expect(calls.some((call) => call.sql.includes("'refund'"))).toBe(true);
     expect(calls.at(-1).sql).toBe('COMMIT');
   });
+
+  it('removes a failed virtual-chip registration without creating a refund ledger entry', async () => {
+    const calls = [];
+    const db = { async query(sql, values = []) { calls.push({ sql, values }); return { rows:[] }; } };
+    const persistence = createTournamentPersistence({ db, service:new TournamentService() });
+
+    await persistence.rollbackRegistration({
+      entryId:'virtual-entry', tableId:'virtual-table', newTable:true, trackId:'virtual-track',
+      userId:'virtual-user', buyIn:200000, balanceAfter:100000, virtualChips:true
+    });
+
+    expect(calls.some((call) => call.sql.includes('DELETE FROM tournament_entries'))).toBe(true);
+    expect(calls.some((call) => call.sql.includes("'refund'"))).toBe(false);
+    expect(calls.at(-1).sql).toBe('COMMIT');
+  });
 });

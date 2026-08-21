@@ -80,7 +80,22 @@ export async function buildApp(options = {}) {
         const key = `${item.game}:${item.roomId}`;
         if (seenRooms.has(key)) continue;
         seenRooms.add(key);
-        try { await app.reconcileTournamentRoom(item.game, item.roomId); }
+        try {
+          if (item.startable) {
+            if (item.service === 'texas') {
+              await app.texasLifecycle.mutate(item.roomId, () => {
+                const room = app.texas.room(item.roomId);
+                return app.texas.startHand(room.id, room.hostUserId);
+              });
+            } else {
+              await app.lifecycle.mutate(item.roomId, () => {
+                const room = app.rooms.room(item.roomId);
+                return app.rooms.startNextRound(room.id, room.hostUserId, { now:app.tournaments.now() });
+              });
+            }
+          }
+          await app.reconcileTournamentRoom(item.game, item.roomId);
+        }
         catch (error) { app.log.warn({ err:error, game:item.game, roomId:item.roomId }, 'tournament tick room reconciliation failed'); }
       }
       for (const edition of editions) {

@@ -51,6 +51,7 @@ export function registerRoomRoutes(app, options = {}) {
     return { message: { ...message } };
   });
   app.post('/api/rooms/:roomId/start-next', { preHandler: requireUser }, async (request) => {
+    app.tournaments?.assertRoomStartAllowed('zhajinhua', request.params.roomId);
     await lifecycle.mutate(request.params.roomId, () => service.startNextRound(request.params.roomId, request.user.id, {
       now: lifecycle.clock?.now?.() ?? Date.now()
     }));

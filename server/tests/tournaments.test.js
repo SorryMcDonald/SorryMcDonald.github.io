@@ -89,6 +89,78 @@ describe('weekly tournaments', () => {
     await app.close();
   });
 
+  it('blocks an early permanent-table start and automatically starts it at the slot boundary', async () => {
+    const clock = clockAt('2026-08-20T05:05:00.000Z');
+    const app = await buildApp({ logger:false, tournamentClock:clock, tournamentScheduler:false });
+    const first = await register(app, 'permanent-start-a');
+    const second = await register(app, 'permanent-start-b');
+    const entered = await app.inject({
+      method:'POST', url:'/api/tournaments/ghost_texas/enter',
+      headers:{ cookie:first.cookie }, payload:{ buyIn:200000 }
+    });
+    await app.inject({
+      method:'POST', url:'/api/tournaments/ghost_texas/enter',
+      headers:{ cookie:second.cookie }, payload:{ buyIn:200000 }
+    });
+    const roomId = entered.json().roomId;
+
+    const early = await app.inject({
+      method:'POST', url:`/api/texas/rooms/${roomId}/start`, headers:{ cookie:first.cookie }, payload:{}
+    });
+    expect(early.statusCode).toBe(403);
+    expect(app.texas.room(roomId).status).toBe('waiting');
+
+    clock.set('2026-08-20T07:00:00.000Z');
+    await app.runTournamentTick();
+    expect(app.texas.room(roomId).status).toBe('preflop');
+    expect(app.texas.room(roomId).handNumber).toBe(1);
+    await app.runTournamentTick();
+    expect(app.texas.room(roomId).handNumber).toBe(1);
+    await app.close();
+  });
+
+  it('keeps the tournament scheduler alive when a persisted table has no game room', async () => {
+    const clock = clockAt('2026-08-20T05:05:00.000Z');
+    const app = await buildApp({ logger:false, tournamentClock:clock, tournamentScheduler:false });
+    const player = await register(app, 'missing-table-room');
+    const entered = await app.inject({
+      method:'POST', url:'/api/tournaments/ghost_texas/enter',
+      headers:{ cookie:player.cookie }, payload:{ buyIn:200000 }
+    });
+    app.texas.rooms.delete(entered.json().roomId);
+
+    clock.set('2026-08-20T07:00:00.000Z');
+    expect(() => app.tournaments.tick()).not.toThrow();
+    await app.close();
+  });
+
+  it('blocks and then automatically starts a permanent Zhajinhua table', async () => {
+    const clock = clockAt('2026-08-20T05:05:00.000Z');
+    const app = await buildApp({ logger:false, tournamentClock:clock, tournamentScheduler:false });
+    const first = await register(app, 'permanent-zjh-a');
+    const second = await register(app, 'permanent-zjh-b');
+    const entered = await app.inject({
+      method:'POST', url:'/api/tournaments/laizi_zhajinhua/enter',
+      headers:{ cookie:first.cookie }, payload:{ buyIn:200000 }
+    });
+    await app.inject({
+      method:'POST', url:'/api/tournaments/laizi_zhajinhua/enter',
+      headers:{ cookie:second.cookie }, payload:{ buyIn:200000 }
+    });
+    const roomId = entered.json().roomId;
+
+    const early = await app.inject({
+      method:'POST', url:`/api/rooms/${roomId}/start-next`, headers:{ cookie:first.cookie }, payload:{}
+    });
+    expect(early.statusCode).toBe(403);
+
+    clock.set('2026-08-20T07:00:00.000Z');
+    await app.runTournamentTick();
+    expect(app.rooms.room(roomId).status).toBe('betting');
+    expect(app.rooms.room(roomId).roundNumber).toBe(1);
+    await app.close();
+  });
+
   it('automatically creates another Texas table when the first table is full', async () => {
     const clock = clockAt('2026-08-19T04:05:00.000Z');
     const app = await buildApp({ logger:false, tournamentClock:clock, attachGateway:true });

@@ -60,7 +60,7 @@ function revealStreet(room, street) {
   for (let index = 0; index < count; index += 1) room.board.push(drawBoardCard());
   room.status = street;
   room.currentBet = 0;
-  room.minRaise = TEXAS_MIN_RAISE;
+  room.minRaise = room.variant ? 1000 : TEXAS_MIN_RAISE;
   for (const player of handPlayers(room)) {
     player.streetBet = 0;
     player.acted = false;

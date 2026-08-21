@@ -152,17 +152,58 @@ export class TournamentService {
   // Called by the server lifecycle controller so a tournament continues to
   // advance even when nobody happens to request the lobby endpoint.
   tick(now = this.now()) {
-    const editions = [this.editionFor('weekly', now), this.editionFor('permanent', now)];
+    const current = [this.editionFor('weekly', now), this.editionFor('permanent', now)];
+    const editions = [...new Map([
+      ...this.editions.values(),
+      ...current
+    ].filter((edition) => !['completed','cancelled'].includes(edition.status))
+      .map((edition) => [edition.id, edition])).values()];
     const rooms = [];
     for (const edition of editions) {
       this.refreshEdition(edition, now);
       for (const track of edition.tracks.values()) {
         for (const table of track.tables.values()) {
-          if (table.status === 'active') rooms.push({ game:track.game, roomId:table.roomId, editionId:edition.id });
+          if (table.status !== 'active') continue;
+          const config = GAME_CONFIG[track.game];
+          let room;
+          try {
+            room = this.gameService(track.game).room(table.roomId);
+          } catch {
+            rooms.push({
+              game:track.game, service:config.service, roomId:table.roomId,
+              editionId:edition.id, startable:false
+            });
+            continue;
+          }
+          const playerCount = [...track.entries.values()].filter((entry) => (
+            entry.status === 'active' && entry.roomId === room.id
+            && activeRoomPlayer(room, entry.userId)
+          )).length;
+          const neverStarted = config.service === 'texas'
+            ? room.status === 'waiting' && Number(room.handNumber ?? 0) === 0
+            : room.status === 'waiting' && Number(room.roundNumber ?? 0) === 0;
+          rooms.push({
+            game:track.game,
+            service:config.service,
+            roomId:room.id,
+            editionId:edition.id,
+            startable:edition.kind === 'permanent'
+              && now >= Date.parse(edition.opensAt)
+              && playerCount >= 2
+              && neverStarted
+          });
         }
       }
     }
     return { editions, rooms };
+  }
+
+  assertRoomStartAllowed(game, roomId, now = this.now()) {
+    const found = this.findTrackByRoom(game, roomId);
+    if (!found || found.edition.kind !== 'permanent') return;
+    if (now < Date.parse(found.edition.opensAt)) {
+      throw httpError(403, `比赛将在 ${found.edition.opensAt} 开始`);
+    }
   }
 
   entryForUser(track, userId) {
@@ -187,7 +228,8 @@ export class TournamentService {
       const entry = userId ? this.entryForUser(track, userId) : null;
       const champion = track.championUserId ? this.store.users.get(track.championUserId) : null;
       return {
-        id:track.id, game:track.game, label:GAME_CONFIG[track.game].label, status:track.status,
+        id:track.id, game:track.game, gamePath:GAME_CONFIG[track.game].path,
+        label:GAME_CONFIG[track.game].label, status:track.status,
         variant:GAME_CONFIG[track.game].variant ?? null, virtualChips:GAME_CONFIG[track.game].virtualChips ?? null,
         minimumBuyIn:GAME_CONFIG[track.game].minimumBuyIn, maximumBuyIn:TOURNAMENT_BUY_IN_CAP,
         playerCount:[...track.entries.values()].filter((value) => value.status === 'active').length,
@@ -264,7 +306,7 @@ export class TournamentService {
       mutation:{
         previousVersion, eventStart, editionId:edition.id, trackId:track.id,
         entryId:entry.id, tableId:table.id, newTable:previousVersion === -1,
-        userId, buyIn, balanceAfter:number(user.beans)
+        userId, buyIn, balanceAfter:number(user.beans), virtualChips:virtual
       }
     };
   }

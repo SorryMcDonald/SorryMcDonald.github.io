@@ -33,9 +33,9 @@ function renderAccount() {
   $('accountBeans').textContent = `${formatNumber(state.user?.beans)} 豆`;
 }
 
-function enterRoom(game, roomId) {
-  sessionStorage.setItem(game === 'texas' ? 'texas.roomId' : 'zhajinhua.roomId', roomId);
-  location.href = game === 'texas' ? '/dezhou.html' : '/';
+function enterRoom(gamePath, roomId) {
+  sessionStorage.setItem(gamePath === '/dezhou.html' ? 'texas.roomId' : 'zhajinhua.roomId', roomId);
+  location.href = gamePath;
 }
 
 async function submitEntry(game, input, button) {
@@ -46,7 +46,7 @@ async function submitEntry(game, input, button) {
     state.tournament = data.edition;
     state.user = (await api('/api/auth/me')).user;
     renderAccount();
-    enterRoom(game, data.roomId);
+    enterRoom(data.gamePath, data.roomId);
   } catch (error) {
     $('pageError').textContent = error.message;
     button.disabled = false;
@@ -78,7 +78,7 @@ function renderTracks(tournament = state.tournament, listId = 'trackList') {
       entry.innerHTML = `<p><strong>${entryStatusText(track.entry.status)}</strong><br>带入 ${formatNumber(track.entry.buyIn)} · 当前筹码 ${formatNumber(track.entry.chips)}</p>`;
       if (track.entry.status === 'active') {
         const button = document.createElement('button'); button.className = 'primary-button'; button.type = 'button'; button.textContent = '进入牌桌';
-        button.addEventListener('click', () => enterRoom(track.game, track.entry.roomId)); entry.append(button);
+        button.addEventListener('click', () => enterRoom(track.gamePath, track.entry.roomId)); entry.append(button);
       }
       card.append(entry);
     } else {

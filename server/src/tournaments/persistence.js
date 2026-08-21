@@ -105,13 +105,15 @@ export function createTournamentPersistence({ db, service }) {
       await transaction(db, async (client) => {
         await client.query('DELETE FROM tournament_entries WHERE id=$1', [mutation.entryId]);
         if (mutation.newTable) await client.query('DELETE FROM tournament_tables WHERE id=$1', [mutation.tableId]);
-        await client.query(`INSERT INTO tournament_wallet_ledger
-          (idempotency_key,track_id,user_id,entry_type,amount,balance_after,metadata)
-          VALUES ($1,$2,$3,'refund',$4,$5,$6) ON CONFLICT (idempotency_key) DO NOTHING`, [
-          `tournament:${mutation.trackId}:rollback:${mutation.entryId}`,
-          mutation.trackId,mutation.userId,mutation.buyIn,mutation.balanceAfter + mutation.buyIn,
-          { reason:'room_persistence_failed', entryId:mutation.entryId }
-        ]);
+        if (!mutation.virtualChips) {
+          await client.query(`INSERT INTO tournament_wallet_ledger
+            (idempotency_key,track_id,user_id,entry_type,amount,balance_after,metadata)
+            VALUES ($1,$2,$3,'refund',$4,$5,$6) ON CONFLICT (idempotency_key) DO NOTHING`, [
+            `tournament:${mutation.trackId}:rollback:${mutation.entryId}`,
+            mutation.trackId,mutation.userId,mutation.buyIn,mutation.balanceAfter + mutation.buyIn,
+            { reason:'room_persistence_failed', entryId:mutation.entryId }
+          ]);
+        }
       });
     }
   };
