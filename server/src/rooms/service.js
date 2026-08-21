@@ -4,6 +4,7 @@ import {
   calculateSidePotPayouts,
   compareHands,
   evaluateHand,
+  evaluateWildHand,
   netChange,
   selectDealer,
   shouldSettle,
@@ -29,6 +30,23 @@ function roomAnte(value) {
 
 function deck() {
   return SUITS.flatMap((suit) => Array.from({ length: 13 }, (_, index) => ({ rank: index + 2, suit })));
+}
+
+function laiziDeck() {
+  const cards = deck();
+  cards.push(
+    { rank:0, suit:'JOKER_BIG', joker:true }, { rank:0, suit:'JOKER_BIG', joker:true },
+    { rank:0, suit:'JOKER_SMALL', joker:true }, { rank:0, suit:'JOKER_SMALL', joker:true }
+  );
+  return cards;
+}
+
+function roundDeck(room) {
+  return room.variant === 'laizi' ? laiziDeck() : deck();
+}
+
+function evaluateRoundHand(room, cards) {
+  return room.variant === 'laizi' ? evaluateWildHand(cards) : evaluateHand(cards);
 }
 
 function shuffle(cards, randomInteger) {
@@ -96,6 +114,11 @@ function setTurn(room, seat, now) {
     room.turnDeadlineAt = null;
     return;
   }
+  if (room.autoTimeout === false) {
+    room.turnStartedAt = null;
+    room.turnDeadlineAt = null;
+    return;
+  }
   const startedAt = nowMs(now);
   room.turnStartedAt = new Date(startedAt).toISOString();
   room.turnDeadlineAt = new Date(startedAt + TURN_TIMEOUT_MS).toISOString();
@@ -123,6 +146,7 @@ export class RoomService {
     if (!this.store.banners) this.store.banners = [];
     this.rooms = new Map();
     this.randomInteger = randomInteger;
+    this.autoTimeout = true;
   }
 
   user(userId) {
@@ -196,6 +220,7 @@ export class RoomService {
       roundActedSeats: [],
       turnStartedAt: null,
       turnDeadlineAt: null,
+      autoTimeout: this.autoTimeout,
       allowSpectators: Boolean(input.allowSpectators ?? false),
       players: new Map(),
       spectators: new Set(),
@@ -204,7 +229,9 @@ export class RoomService {
       messages: [],
       chatLastAt: new Map(),
       round: null,
-      tournament
+      tournament,
+      variant: input.variant ?? tournament?.variant ?? null,
+      minRaise: Math.max(0, Number(input.minRaise ?? tournament?.minRaise ?? 0))
     };
     this.rooms.set(id, room);
     appendEvent(room, 'room_created', { code: room.code });
@@ -234,9 +261,10 @@ export class RoomService {
     const chosenSeat = preferred ?? [...Array(MAX_SEATS).keys()].find((value) => !used.has(value));
     if (chosenSeat === undefined) throw httpError(409, '没有可用座位');
     const tournamentMove = Boolean(internal.tournamentMove);
+    const virtualChips = Boolean(room.tournament?.virtualChips);
     const tournamentBuyIn = room.tournament ? Math.floor(Number(internal.buyIn ?? 0)) : 0;
     if (room.tournament && (!Number.isSafeInteger(tournamentBuyIn) || tournamentBuyIn <= 0)) throw httpError(400, '锦标赛带入筹码无效');
-    if (room.tournament && !tournamentMove && userBeans(user) < tournamentBuyIn) throw httpError(400, '账户豆子不足以报名');
+    if (room.tournament && !virtualChips && !tournamentMove && userBeans(user) < tournamentBuyIn) throw httpError(400, '账户豆子不足以报名');
     const player = {
       id: randomUUID(),
       userId,
@@ -260,7 +288,7 @@ export class RoomService {
       tournamentChips:room.tournament ? tournamentBuyIn : null,
       tournamentExited:false
     };
-    if (room.tournament && !tournamentMove) user.beans = userBeans(user) - tournamentBuyIn;
+    if (room.tournament && !virtualChips && !tournamentMove) user.beans = userBeans(user) - tournamentBuyIn;
     room.players.set(player.id, player);
     room.spectators.delete(userId);
     touch(room);
@@ -376,10 +404,11 @@ export class RoomService {
     room.dealerSeat = dealer.seat;
     room.pot = 0;
     room.level = room.ante;
+    room.minRaise = room.variant ? 1000 : 0;
     room.bettingRound = 0;
     room.roundActedSeats = [];
     room.round = { id: randomUUID(), idempotency: false };
-    const cards = shuffle(deck(), this.randomInteger);
+    const cards = shuffle(roundDeck(room), this.randomInteger);
     ordered.forEach((player, index) => {
       const user = this.user(player.userId);
       player.inRound = true;
@@ -393,7 +422,7 @@ export class RoomService {
       player.actionSeq = 0;
       player.lastAction = null;
       player.cards = cards.slice(index * 3, index * 3 + 3);
-      player.handType = evaluateHand(player.cards).name;
+      player.handType = evaluateRoundHand(room, player.cards).name;
       player.startingBeans = playerBalance(room, player, user);
       const ante = Math.min(room.ante, playerBalance(room, player, user));
       debit(room, player, user, ante);
@@ -442,6 +471,7 @@ export class RoomService {
       if (playerBalance(room, player, user) === 0) player.allIn = true;
     } else if (type === 'raise') {
       const raise = validateRaise({ amount: input.amount, level: room.level, balance: playerBalance(room, player, user), seen: player.seen });
+      if (room.variant && raise.base - room.level < 1000) throw httpError(400, '特殊赛每次加注至少 1000');
       amount = debit(room, player, user, raise.charge);
       room.level = raise.base;
       room.roundActedSeats = [];
@@ -582,7 +612,7 @@ export class RoomService {
       const net = netChange({ payout, totalContribution: player.totalContribution });
       player.revealed = true;
       player.mayReveal = false;
-      player.handType = evaluateHand(player.cards).name;
+      player.handType = evaluateRoundHand(room, player.cards).name;
       results.push({ ...player, payout, net, beans:room.tournament ? player.tournamentChips : user.beans, settledOrder: player.actionSeq });
     }
     const winner = selectDealer(results.map((result) => ({
@@ -659,12 +689,17 @@ export class RoomService {
     if (!room.tournament || room.tournament.completed) return 0;
     const player = seatedPlayers(room).find((candidate) => candidate.userId === userId);
     if (!player) throw httpError(404, '冠军不在锦标赛牌桌');
-    const amount = Math.max(0, Number(player.tournamentChips ?? 0));
+    const amount = room.tournament.championPrize ? Number(room.tournament.championPrize) : Math.max(0, Number(player.tournamentChips ?? 0));
     const user = this.user(userId);
     user.beans = userBeans(user) + amount;
     player.tournamentChips = 0;
     room.tournament.completed = true;
     room.status = 'finished';
+    if (amount > 0) this.ledger(room, {
+      idempotencyKey:`zhajinhua:${room.id}:tournament-prize:${userId}`,
+      userId, roomId:room.id, roundId:room.round?.id ?? null, entryType:'tournament_prize', amount,
+      balanceAfter:user.beans, metadata:{ tournamentTrackId:room.tournament.trackId }
+    });
     appendEvent(room, 'tournament_champion', { userId, nickname:user.nickname, prize:amount });
     touch(room);
     return amount;
@@ -702,6 +737,8 @@ export class RoomService {
     });
     if (room.tournament) {
       snapshot.tournament = { ...room.tournament };
+      snapshot.variant = room.variant;
+      snapshot.minRaise = room.minRaise;
       snapshot.players = snapshot.players.map((visible) => {
         const player = [...room.players.values()].find((candidate) => candidate.id === visible.id);
         return { ...visible, tournamentChips:Number(player?.tournamentChips ?? 0) };

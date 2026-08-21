@@ -49,6 +49,11 @@ export async function buildApp(options = {}) {
     mutationQueue: app.lifecycle.mutationQueue
   });
   app.decorate('texasLifecycle', texasLifecycle);
+  // Automatic turn folds are opt-in. Production uses the default lifecycle
+  // clock and therefore leaves players in control until they act.
+  app.texas.autoTimeout = texasLifecycle.autoTimeout;
+  app.rooms.autoTimeout = app.lifecycle.autoTimeout;
+  for (const room of app.rooms.rooms.values()) room.autoTimeout = app.lifecycle.autoTimeout;
 
   registerTournamentRoutes(app, {
     service:options.tournamentService,

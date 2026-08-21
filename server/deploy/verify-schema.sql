@@ -91,12 +91,34 @@ BEGIN
   INTO missing_objects
   FROM unnest(ARRAY[
     'tournament_editions_opens_at_idx',
+    'tournament_editions_kind_opens_at_idx',
     'tournament_entries_room_active_idx',
     'tournament_entries_user_idx'
   ]) AS object_name
   WHERE to_regclass('public.' || object_name) IS NULL;
   IF missing_objects IS NOT NULL THEN
     RAISE EXCEPTION 'missing tournament indexes: %', missing_objects;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='tournament_editions'
+      AND column_name='competition_kind'
+  ) THEN
+    RAISE EXCEPTION 'missing tournament_editions.competition_kind';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint AS constraint_row
+    JOIN pg_class AS table_row ON table_row.oid = constraint_row.conrelid
+    JOIN pg_namespace AS namespace_row ON namespace_row.oid = table_row.relnamespace
+    WHERE namespace_row.nspname='public'
+      AND table_row.relname='tournament_tracks'
+      AND constraint_row.conname='tournament_tracks_game_check'
+      AND position('wild_texas' IN pg_get_constraintdef(constraint_row.oid)) > 0
+  ) THEN
+    RAISE EXCEPTION 'tournament_tracks_game_check does not allow special variants';
   END IF;
 
   IF to_regclass('public.doudizhu_rooms') IS NULL THEN
@@ -128,12 +150,12 @@ $verify$;
 
 SELECT json_build_object(
   'schema_ready', true,
-  'migration_level', 9,
+  'migration_level', 10,
   'texas_table_count', 9,
   'texas_index_count', 9,
   'texas_trigger_count', 4,
   'tournament_table_count', 5,
-  'tournament_index_count', 3,
+  'tournament_index_count', 4,
   'tournament_trigger_count', 3,
   'doudizhu_table_count', 1,
   'refill_index_count', 1

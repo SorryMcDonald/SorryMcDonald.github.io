@@ -27,7 +27,7 @@ export function registerTournamentRoutes(app, options = {}) {
   app.decorate('tournaments', service);
 
   async function persistGameRoom(game, roomId, previousVersion = null, eventStart = 0) {
-    if (game === 'texas') {
+    if (game === 'texas' || game.endsWith('_texas')) {
       const room = app.texas.room(roomId);
       await texasPersistence?.flushRoom(room.id, previousVersion ?? room.version - 1, eventStart);
       app.texasLifecycle?.scheduleTurn(room);
@@ -57,7 +57,8 @@ export function registerTournamentRoutes(app, options = {}) {
 
   app.get('/api/tournaments/current', { preHandler:requireUser }, async (request) => queue.run(async () => {
     const ledgerStart = service.pendingLedger.length;
-    const tournament = service.view(request.user.id);
+    const kind = request.query?.kind === 'permanent' ? 'permanent' : 'weekly';
+    const tournament = service.view(request.user.id, service.now(), kind);
     const edition = service.editionById(tournament.id);
     const prizes = service.pendingLedger.slice(ledgerStart).filter((entry) => entry.entryType === 'prize');
     for (const prize of prizes) {

@@ -51,6 +51,42 @@ export function evaluateHand(cards = []) {
   return { name: '单张', typeName: '单张', lv: 1, cmp: desc };
 }
 
+const WILD_SUITS = ['S', 'H', 'C', 'D'];
+
+function cardKey(card) { return `${Number(card.rank)}:${card.suit}`; }
+
+function isJoker(card) { return Boolean(card?.joker) || Number(card?.rank) === 0; }
+
+// 癞子默认取能组成的最大牌型。实际牌不能被癞子重复占用，A 为最大点数；
+// 因此同花 235 会自然优先于普通 235，且癞子不会被降级成普通牌。
+export function evaluateWildHand(cards = []) {
+  if (!Array.isArray(cards) || cards.length !== 3) throw new Error('炸金花需要三张牌');
+  const fixed = cards.filter((card) => !isJoker(card));
+  const wildIndexes = cards.map((card, index) => (isJoker(card) ? index : -1)).filter((index) => index >= 0);
+  if (!wildIndexes.length) return evaluateHand(cards);
+  const used = new Set(fixed.map(cardKey));
+  let best = null;
+  const assignments = [];
+  const visit = (depth) => {
+    if (depth === wildIndexes.length) {
+      const resolved = cards.map((card, index) => isJoker(card) ? assignments[wildIndexes.indexOf(index)] : card);
+      const evaluation = { ...evaluateHand(resolved), cards:resolved };
+      if (!best || compareHands(evaluation, best) > 0) best = evaluation;
+      return;
+    }
+    for (let rank = 2; rank <= 14; rank += 1) {
+      for (const suit of WILD_SUITS) {
+        const card = { rank, suit };
+        const key = cardKey(card);
+        if (used.has(key)) continue;
+        used.add(key); assignments.push(card); visit(depth + 1); assignments.pop(); used.delete(key);
+      }
+    }
+  };
+  visit(0);
+  return best;
+}
+
 export function compareHands(left, right) {
   const a = left?.lv === undefined ? evaluateHand(left) : left;
   const b = right?.lv === undefined ? evaluateHand(right) : right;

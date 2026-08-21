@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { TEXAS_MIN_RAISE, allowedActions, blindPositions, calculateTexasPots, evaluateTexasHand, makeDeck, nextSeat } from './rules.js';
+import { TEXAS_MIN_RAISE, allowedActions, blindPositions, calculateTexasPots, evaluateTexasHand, evaluateTexasWildHand, makeDeck, nextSeat } from './rules.js';
 
 const ACTIVE_STREETS = new Set(['preflop', 'flop', 'turn', 'river']);
 const DEFAULTS = { smallBlind: 100, bigBlind: 200, minBuyIn: 4_000, maxBuyIn: 20_000, defaultBuyIn: 10_000, maxPlayers: 9 };
@@ -8,8 +8,14 @@ export const TEXAS_TURN_TIMEOUT_MS = 60_000;
 function httpError(statusCode, message) { return Object.assign(new Error(message), { statusCode }); }
 function numeric(value, fallback = 0) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
 function userBeans(user) { return numeric(user?.beans); }
-function shuffledDeck() {
-  const cards = makeDeck();
+const WILD_SKILLS = ['peek', 'swap', 'mulligan', 'snitch', 'freeze', 'detective'];
+function drawSkills() {
+  // One card per player. The random draw is independent, so the same skill
+  // may be dealt to multiple players in the same hand.
+  return [WILD_SKILLS[randomInt(WILD_SKILLS.length)]];
+}
+function shuffledDeck(variant = 'standard') {
+  const cards = makeDeck(variant === 'ghost' ? 'ghost' : 'standard');
   for (let index = cards.length - 1; index > 0; index -= 1) {
     const target = randomInt(index + 1);
     [cards[index], cards[target]] = [cards[target], cards[index]];
@@ -27,7 +33,7 @@ function appendEvent(room, eventType, payload = {}) {
 function activePlayers(room) { return [...room.players.values()].filter((player) => !player.left && !player.spectating); }
 function handPlayers(room) { return [...room.players.values()].filter((player) => player.inHand); }
 function contenders(room) { return handPlayers(room).filter((player) => !player.folded); }
-function actionable(room) { return contenders(room).filter((player) => !player.allIn && !player.pendingLeave); }
+function actionable(room) { return contenders(room).filter((player) => !player.allIn && !player.pendingLeave && !player.frozen); }
 function nextActionSeat(room, fromSeat) { return nextSeat(actionable(room), fromSeat, () => true); }
 
 function takeChips(room, player, amount) {
@@ -44,9 +50,14 @@ function revealStreet(room, street) {
   const collectedBets = handPlayers(room)
     .filter((player) => numeric(player.streetBet) > 0)
     .map((player) => ({ userId:player.userId, seat:player.seat, amount:numeric(player.streetBet) }));
-  room.deck.pop();
+  const drawBoardCard = () => {
+    let card = room.deck.pop();
+    while (card?.joker) card = room.deck.pop();
+    return card;
+  };
+  drawBoardCard();
   const count = street === 'flop' ? 3 : 1;
-  room.board.push(...room.deck.splice(-count).reverse());
+  for (let index = 0; index < count; index += 1) room.board.push(drawBoardCard());
   room.status = street;
   room.currentBet = 0;
   room.minRaise = TEXAS_MIN_RAISE;
@@ -54,6 +65,7 @@ function revealStreet(room, street) {
     player.streetBet = 0;
     player.acted = false;
     player.canRaise = true;
+    player.frozen = false;
   }
   room.currentTurn = nextActionSeat(room, room.dealerSeat);
   appendEvent(room, `${street}_dealt`, { board: room.board, collectedBets, pot:room.pot });
@@ -73,6 +85,10 @@ function cashOut(room, player, user, reason = 'leave') {
   return amount;
 }
 
+function evaluateRoomHand(room, cards) {
+  return room.variant === 'ghost' ? evaluateTexasWildHand(cards) : evaluateTexasHand(cards);
+}
+
 export class TexasService {
   constructor({ store, clock, turnTimeoutMs = TEXAS_TURN_TIMEOUT_MS } = {}) {
     this.store = store ?? { users:new Map(), banners:[] };
@@ -80,6 +96,9 @@ export class TexasService {
     this.rooms = new Map();
     this.clock = clock ?? { now: () => Date.now() };
     this.turnTimeoutMs = turnTimeoutMs;
+    // The lifecycle controller disables this in production. Direct service
+    // users retain deadline fields for backwards-compatible state handling.
+    this.autoTimeout = true;
   }
 
   user(userId) { const user = this.store.users.get(userId); if (!user) throw httpError(404, '用户不存在'); return user; }
@@ -111,6 +130,11 @@ export class TexasService {
   ledger(room, entry) { room.pendingLedger.push(entry); }
 
   refreshTurnDeadline(room) {
+    if (!this.autoTimeout) {
+      room.turnStartedAt = null;
+      room.turnDeadlineAt = null;
+      return room;
+    }
     if (!ACTIVE_STREETS.has(room.status) || room.currentTurn < 0) {
       room.turnStartedAt = null;
       room.turnDeadlineAt = null;
@@ -134,11 +158,11 @@ export class TexasService {
     const room = {
       id, code:String(input.code ?? Math.floor(100000 + Math.random() * 900000)), status:'waiting', hostUserId:userId,
       isPublic:tournament ? false : input.isPublic !== false, allowSpectators:Boolean(input.allowSpectators), spectatorCards:Boolean(input.allowSpectators),
-      smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:TEXAS_MIN_RAISE,
+      smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:Number(internal.tournament?.minRaise ?? TEXAS_MIN_RAISE),
       pot:0, pots:[], board:[], deck:[], handNumber:0, hand:null, players:new Map(), spectators:new Set(),
       events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[],
       messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null,
-      createdAt:this.timestamp(), updatedAt:this.timestamp(), tournament
+      createdAt:this.timestamp(), updatedAt:this.timestamp(), tournament, variant:input.variant ?? internal.tournament?.variant ?? null
     };
     this.rooms.set(id, room);
     try {
@@ -166,17 +190,18 @@ export class TexasService {
     if (activePlayers(room).length >= room.maxPlayers) throw httpError(409, '房间已满');
     const buyIn = Math.floor(numeric(input.buyIn, Math.min(DEFAULTS.defaultBuyIn, room.maxBuyIn)));
     const tournamentMove = Boolean(internal.tournamentMove);
+    const virtualChips = Boolean(room.tournament?.virtualChips);
     if (!tournamentMove && (buyIn < room.minBuyIn || buyIn > room.maxBuyIn)) throw httpError(400, `买入需在 ${room.minBuyIn}-${room.maxBuyIn} 之间`);
-    if (!tournamentMove && userBeans(user) < buyIn) throw httpError(400, '账户豆子不足以买入');
+    if (!virtualChips && !tournamentMove && userBeans(user) < buyIn) throw httpError(400, '账户豆子不足以买入');
     const used = new Set(activePlayers(room).map((player) => player.seat));
     const requested = Number(input.seat);
     const seat = Number.isInteger(requested) && requested >= 0 && requested < room.maxPlayers && !used.has(requested)
       ? requested : [...Array(room.maxPlayers).keys()].find((value) => !used.has(value));
-    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:ACTIVE_STREETS.has(room.status), folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false, tournamentEntryId:internal.tournament?.entryId ?? null, tournamentExited:false };
-    if (!tournamentMove) user.beans = userBeans(user) - buyIn;
+    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:ACTIVE_STREETS.has(room.status), folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false, skills:[], skillUsed:false, skillInfo:null, mustContinueAfterSkill:false, frozen:false, tournamentEntryId:internal.tournament?.entryId ?? null, tournamentExited:false };
+    if (!virtualChips && !tournamentMove) user.beans = userBeans(user) - buyIn;
     room.players.set(player.id, player);
     room.spectators.delete(userId);
-    if (!tournamentMove) this.ledger(room, { idempotencyKey:`texas:${room.id}:buyin:${player.id}`, userId, roomId:room.id, handId:null, entryType:room.tournament ? 'tournament_buy_in' : 'buy_in', amount:-buyIn, balanceAfter:user.beans, metadata:{ seat, tournamentTrackId:room.tournament?.trackId ?? null } });
+    if (!virtualChips && !tournamentMove) this.ledger(room, { idempotencyKey:`texas:${room.id}:buyin:${player.id}`, userId, roomId:room.id, handId:null, entryType:room.tournament ? 'tournament_buy_in' : 'buy_in', amount:-buyIn, balanceAfter:user.beans, metadata:{ seat, tournamentTrackId:room.tournament?.trackId ?? null } });
     appendEvent(room, 'texas_player_joined', { userId, nickname:user.nickname, seat, waiting:player.waiting });
     return this.touch(room);
   }
@@ -236,11 +261,13 @@ export class TexasService {
     room.dealerSeat = room.dealerSeat === null ? players.sort((a,b) => a.seat-b.seat)[0].seat : nextSeat(players, room.dealerSeat, () => true);
     room.handNumber += 1;
     room.hand = { id:randomUUID(), number:room.handNumber, startedAt:new Date().toISOString() };
-    room.status = 'preflop'; room.board = []; room.deck = shuffledDeck(); room.pot = 0; room.pots = []; room.currentBet = 0; room.minRaise = TEXAS_MIN_RAISE;
+    room.status = 'preflop'; room.board = []; room.deck = shuffledDeck(room.variant); room.pot = 0; room.pots = []; room.currentBet = 0; room.minRaise = room.variant ? 1000 : TEXAS_MIN_RAISE;
     for (const player of activePlayers(room)) {
       player.inHand = player.stack > 0; player.waiting = player.stack <= 0; player.folded = false; player.allIn = false;
       player.acted = false; player.canRaise = true; player.streetBet = 0; player.totalContribution = 0; player.actionSeq = 0;
       player.lastAction = null; player.holeCards = []; player.evaluation = null; player.pendingLeave = false;
+      player.skills = room.variant === 'wild' ? drawSkills() : [];
+      player.skillUsed = false; player.skillInfo = null; player.mustContinueAfterSkill = false; player.frozen = false;
     }
     const ordered = players.sort((a,b) => a.seat-b.seat);
     for (let card = 0; card < 2; card += 1) for (const player of ordered) player.holeCards.push(room.deck.pop());
@@ -277,6 +304,7 @@ export class TexasService {
     const permitted = allowedActions(room, player);
     const type = String(input.type ?? input.action ?? '');
     if (!permitted.actions.includes(type)) throw httpError(400, '当前不能执行该操作');
+    if (type === 'fold' && player.mustContinueAfterSkill) throw httpError(409, '使用换牌技能后必须先参与下注');
     const oldCurrentBet = room.currentBet;
     let paid = 0;
     let fullRaise = false;
@@ -297,7 +325,7 @@ export class TexasService {
         fullRaise = oldCurrentBet === 0 ? target >= room.bigBlind : increase >= room.minRaise;
         room.currentBet = target;
         if (fullRaise) {
-          room.minRaise = TEXAS_MIN_RAISE;
+          room.minRaise = room.variant ? 1000 : TEXAS_MIN_RAISE;
           for (const other of actionable(room)) { other.acted = false; other.canRaise = true; }
         }
       }
@@ -306,6 +334,7 @@ export class TexasService {
         for (const other of actionable(room)) if (other.acted) other.canRaise = false;
       }
     }
+    player.mustContinueAfterSkill = false;
     player.lastAction = type; player.actionSeq = actionSeq;
     room.processedActions.push(clientActionId);
     room.pendingClientActions ??= [];
@@ -316,6 +345,52 @@ export class TexasService {
     const updated = this.touch(room);
     this.refreshTurnDeadline(room);
     return updated;
+  }
+
+  useSkill(roomId, userId, input = {}) {
+    const room = this.room(roomId);
+    if (room.variant !== 'wild') throw httpError(409, '当前牌桌没有百变技能');
+    if (!['preflop', 'flop'].includes(room.status)) throw httpError(409, '技能只能在翻牌前或翻牌圈使用');
+    const player = activePlayers(room).find((value) => value.userId === userId && value.inHand && !value.folded && !value.allIn);
+    if (!player) throw httpError(403, '玩家不在当前手牌中');
+    if (player.skillUsed) throw httpError(409, '每手牌最多使用一个技能');
+    const skill = String(input.skill ?? '');
+    if (!player.skills?.includes(skill)) throw httpError(400, '你没有这张技能卡');
+    const target = input.targetUserId ? activePlayers(room).find((value) => value.userId === input.targetUserId && value.userId !== userId && value.inHand && !value.folded) : null;
+    const preflop = room.status === 'preflop';
+    const boardPhase = room.status === 'flop';
+    if (['peek', 'swap', 'mulligan'].includes(skill) && !preflop) throw httpError(409, '该技能只能在翻牌前使用');
+    if (['snitch', 'freeze', 'detective'].includes(skill) && !boardPhase) throw httpError(409, '该技能只能在翻牌圈使用');
+    if (['snitch', 'freeze', 'detective'].includes(skill) && !target) throw httpError(400, '请选择技能目标');
+    if (skill === 'peek') {
+      player.skillInfo = { peek: room.deck.at(-1) ?? null };
+    } else if (skill === 'swap') {
+      const index = Number(input.cardIndex);
+      if (![0, 1].includes(index)) throw httpError(400, '请选择一张底牌');
+      const replacement = room.deck.pop();
+      if (!replacement) throw httpError(409, '牌库不足');
+      player.holeCards[index] = replacement;
+      player.mustContinueAfterSkill = true;
+    } else if (skill === 'mulligan') {
+      if (room.deck.length < 2) throw httpError(409, '牌库不足');
+      player.holeCards = [room.deck.pop(), room.deck.pop()];
+      player.mustContinueAfterSkill = true;
+    } else if (skill === 'snitch') {
+      player.skillInfo = { snitch: { userId:target.userId, nickname:target.nickname, holeCards:target.holeCards } };
+    } else if (skill === 'freeze') {
+      target.frozen = true;
+      if (room.currentTurn === target.seat) {
+        target.actionSeq += 1;
+        target.lastAction = 'freeze';
+        this.progress(room, target.seat);
+      }
+    } else if (skill === 'detective') {
+      const evaluation = target.holeCards?.length === 2 && room.board.length >= 3 ? evaluateRoomHand(room, [...target.holeCards, ...room.board]) : null;
+      player.skillInfo = { detective: { userId:target.userId, nickname:target.nickname, hint:evaluation?.level >= 7 ? '强牌' : evaluation?.level >= 4 ? '中等牌' : '大概率诈唬' } };
+    }
+    player.skillUsed = true;
+    appendEvent(room, 'texas_skill_used', { userId, nickname:player.nickname, skill, targetUserId:target?.userId ?? null });
+    return this.touch(room);
   }
 
   timeoutFold(roomId, context = {}) {
@@ -370,7 +445,7 @@ export class TexasService {
     if (numeric(room.pot) !== contributionTotal) throw new Error(`德州结算池子与玩家贡献不一致: pot=${room.pot}, contributed=${contributionTotal}`);
     for (const player of contenders(room)) {
       const availableCards = [...player.holeCards, ...room.board];
-      player.evaluation = availableCards.length >= 5 ? evaluateTexasHand(availableCards) : null;
+      player.evaluation = availableCards.length >= 5 ? evaluateRoomHand(room, availableCards) : null;
     }
     const { payouts, pots } = calculateTexasPots(handPlayersBefore, room.dealerSeat);
     room.pots = pots;
@@ -464,7 +539,7 @@ export class TexasService {
     if (!room.tournament || room.tournament.completed) return 0;
     const player = activePlayers(room).find((value) => value.userId === userId);
     if (!player) throw httpError(404, '冠军不在锦标赛牌桌');
-    const amount = Math.max(0, numeric(player.stack));
+    const amount = room.tournament.championPrize ? Number(room.tournament.championPrize) : Math.max(0, numeric(player.stack));
     const user = this.user(userId);
     user.beans = userBeans(user) + amount;
     player.stack = 0;
@@ -523,6 +598,7 @@ export class TexasService {
         id:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, stack:player.stack,
         inHand:player.inHand, waiting:player.waiting, folded:player.folded, allIn:player.allIn, pendingLeave:player.pendingLeave,
         streetBet:player.streetBet, totalContribution:player.totalContribution, actionSeq:player.actionSeq, lastAction:player.lastAction,
+        ...(player.userId === userId && room.variant === 'wild' ? { skills:player.skills ?? [], skillUsed:Boolean(player.skillUsed), skillInfo:player.skillInfo ?? null } : {}),
       };
       if (settledResults.has(player.id)) result.settlementBeans = Number(settledResults.get(player.id).totalBeans ?? 0);
       if (showCards) {
@@ -540,7 +616,7 @@ export class TexasService {
       pots:room.pots, board:room.board, handNumber:room.handNumber, handId:room.hand?.id ?? null,
        turnStartedAt:room.turnStartedAt ?? null, turnDeadlineAt:room.turnDeadlineAt ?? null,
        players, messages:(room.messages ?? []).map((message) => ({ ...message })), allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
-      tournament:room.tournament ? { ...room.tournament } : null,
+      variant:room.variant ?? null, tournament:room.tournament ? { ...room.tournament } : null,
       recentEvents:room.events.slice(-30).map((event) => this.publicEvent(room, event, userId))
     };
   }

@@ -189,17 +189,24 @@ function renderActions() {
   const canRaise = actions.has('raise') || actions.has('bet'); $('raiseButton').disabled = state.acting || !canRaise;
   $('raiseButton').dataset.action = actions.has('bet') ? 'bet' : 'raise'; text('raiseButton', actions.has('bet') ? '下注' : '加注');
   text('actionCostLabel', allowed.toCall ? `待跟 ${money(allowed.toCall)}` : '等待你的行动'); text('beansLabel', `${money(player?.stack)} 筹码`);
+  const skillButton = $('skillButton');
+  skillButton.hidden = room.variant !== 'wild' || !player?.inHand;
+  skillButton.disabled = state.acting || Boolean(player?.skillUsed) || !(player?.skills?.length);
+}
+
+const SKILL_LABELS = { peek:'窥视', swap:'单张置换', mulligan:'重发底牌', snitch:'窥探', freeze:'冻结', detective:'侦探' };
+function openSkillDialog() {
+  const player = me();
+  if (!player?.skills?.length || player.skillUsed) return;
+  const skillSelect = $('skillSelect'); skillSelect.replaceChildren(...player.skills.map((skill) => { const option=document.createElement('option'); option.value=skill; option.textContent=SKILL_LABELS[skill] ?? skill; return option; }));
+  const target = $('skillTarget'); target.replaceChildren(...state.room.players.filter((value) => value.userId !== state.user.id && !value.folded && value.inHand).map((value) => { const option=document.createElement('option'); option.value=value.userId; option.textContent=value.nickname; return option; }));
+  const update = () => { const skill=skillSelect.value; $('skillTargetField').hidden=!['snitch','freeze','detective'].includes(skill); $('skillCardField').hidden=skill !== 'swap'; };
+  skillSelect.onchange=update; update(); $('skillError').textContent=''; $('skillDialog').showModal();
 }
 
 function renderCountdown() {
-  clearInterval(state.countdown); const node = $('turnCountdown'); const room = state.room;
-  if (!room?.turnDeadlineAt || room.currentTurn < 0 || room.status === 'settled') { node.hidden = true; return; }
-  node.hidden = false;
-  const tick = () => {
-    const remain = Math.max(0, Math.ceil((Date.parse(room.turnDeadlineAt) - Date.now()) / 1000)); node.textContent = `${remain}s`;
-    node.classList.toggle('danger', remain <= 10); if (remain <= 0) clearInterval(state.countdown);
-  };
-  tick(); state.countdown = setInterval(tick, 1000);
+  clearInterval(state.countdown);
+  $('turnCountdown').hidden = true;
 }
 
 function renderRoom() {
@@ -208,7 +215,15 @@ function renderRoom() {
   $('startButton').hidden = !['waiting','settled'].includes(room.status) || room.hostUserId !== state.user.id;
   const player = me(); $('rebuyButton').hidden = Boolean(room.tournament) || !player || !['waiting','settled'].includes(room.status) || player.stack >= room.maxBuyIn;
   $('roomSettingsButton').hidden = Boolean(room.tournament) || room.hostUserId !== state.user.id; $('refillButton').hidden = Boolean(room.tournament) || Number(state.user?.beans) !== 0;
-  text('roomTitle', room.tournament ? `锦标赛 · ${room.tournament.tableNumber} 桌` : `房间 ${room.code}`); text('statusBadge', STATUS[room.status] ?? room.status); text('potValue', money(room.pot)); text('handNumber', room.handNumber);
+  const variantLabel = { ghost:'鬼王德州', wild:'百变德州' }[room.variant] ?? '德州扑克';
+  text('roomTitle', room.tournament ? `${variantLabel} · ${room.tournament.tableNumber} 桌` : `房间 ${room.code}`); text('statusBadge', STATUS[room.status] ?? room.status); text('potValue', money(room.pot)); text('handNumber', room.handNumber);
+  text('rulesTitle', `${variantLabel}规则`);
+  const rulesNote = document.querySelector('#rulesDialog .rules-note p');
+  if (rulesNote) rulesNote.textContent = room.variant === 'ghost'
+    ? '鬼王德州使用两副 10/J/Q/K/A 牌和 8 张王，王可代替 10-A。特殊赛每人自动拥有 200,000 虚拟筹码，底注与最低加注均为 1,000，冠军获得 500,000 豆。'
+    : room.variant === 'wild'
+      ? '百变德州每手每位玩家随机获得 1 张技能卡，技能可在翻牌前或翻牌圈使用 1 次，不消耗筹码；特殊赛使用 200,000 虚拟筹码，最低加注 1,000，冠军获得 500,000 豆。'
+      : '全押玩家只能赢取与自己累计投入相匹配的主池或边池，未被其他玩家匹配的多余下注会返还。所有剩余玩家全押后将自动发完公共牌并结算；中途加入需等待下一手，下一手由房主手动开始。';
   text('blindText', `${money(room.smallBlind)} / ${money(room.bigBlind)}`); text('currentBet', money(room.currentBet)); text('minimumRaise', money(room.minRaise));
   const current = room.players.find((value) => value.seat === room.currentTurn);
   text('turnText', current ? (current.userId === state.user.id ? '轮到你行动' : `轮到 ${current.nickname}`) : (['waiting','settled'].includes(room.status) ? '等待房主开始下一手' : '牌局处理中'));
@@ -556,6 +571,18 @@ $('raiseButton').addEventListener('click',openRaise);
 $('raiseForm').addEventListener('submit',async(event) => { event.preventDefault(); const amount = Number($('raiseAmount').value); const allowed = state.room?.allowedActions ?? {}; if (!Number.isFinite(amount) || amount < Number(allowed.minRaiseTo) || amount > Number(allowed.maxRaiseTo)) { text('raiseError','请输入有效的加注额度'); return; } $('raiseDialog').close(); await submitAction($('raiseButton').dataset.action,amount); });
 $('leaderboardButton').addEventListener('click',showLeaderboard); $('backButton').addEventListener('click',() => showGame('table'));
 document.querySelectorAll('[data-rank]').forEach((button) => button.addEventListener('click',() => loadLeaderboard(button.dataset.rank)));
+$('actionBar').querySelector('.action-grid').append($('skillButton'));
+$('skillButton').addEventListener('click',openSkillDialog);
+$('skillForm').addEventListener('submit',async(event) => {
+  event.preventDefault(); $('skillError').textContent='';
+  try {
+    const skill=$('skillSelect').value; const body={ skill };
+    if (['snitch','freeze','detective'].includes(skill)) body.targetUserId=$('skillTarget').value;
+    if (skill === 'swap') body.cardIndex=Number($('skillCardIndex').value);
+    applyRoomSnapshot((await api(`/api/texas/rooms/${state.room.id}/skills`,{ method:'POST',body })).room);
+    $('skillDialog').close();
+  } catch (error) { $('skillError').textContent=error.message; }
+});
 $('rulesButton').addEventListener('click',() => $('rulesDialog').showModal());
 $('rulesDialog').addEventListener('click',(event) => { if (event.target === $('rulesDialog')) $('rulesDialog').close(); });
 $('settingsButton').addEventListener('click',() => { $('musicToggle').checked = state.musicEnabled; $('effectsToggle').checked = state.effectsEnabled; $('motionSelect').value = state.motionMode; $('settingsDialog').showModal(); });

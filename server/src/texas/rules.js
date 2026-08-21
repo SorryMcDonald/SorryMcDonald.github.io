@@ -55,6 +55,33 @@ export function evaluateTexasHand(cards = []) {
   return combinations(cards, 5).map(evaluateFive).reduce((best, value) => compareEvaluations(value, best) > 0 ? value : best);
 }
 
+function isJoker(card) { return Boolean(card?.joker) || Number(card?.rank) === 0; }
+
+export function evaluateTexasWildHand(cards = [], ranks = [10, 11, 12, 13, 14]) {
+  if (!Array.isArray(cards) || cards.length < 5 || cards.length > 7) throw new Error('德州牌型需要五至七张牌');
+  const jokerIndexes = cards.map((card, index) => (isJoker(card) ? index : -1)).filter((index) => index >= 0);
+  if (!jokerIndexes.length) return evaluateTexasHand(cards);
+  const suits = ['S', 'H', 'C', 'D'];
+  const used = new Set(cards.filter((card) => !isJoker(card)).map((card) => `${card.rank}:${card.suit}`));
+  const assignments = [];
+  let best = null;
+  const visit = (depth) => {
+    if (depth === jokerIndexes.length) {
+      const resolved = cards.map((card, index) => isJoker(card) ? assignments[jokerIndexes.indexOf(index)] : card);
+      const evaluation = evaluateTexasHand(resolved);
+      if (!best || compareEvaluations(evaluation, best) > 0) best = { ...evaluation, cards:resolved };
+      return;
+    }
+    for (const rank of ranks) for (const suit of suits) {
+      const key = `${rank}:${suit}`;
+      if (used.has(key)) continue;
+      used.add(key); assignments.push({ rank, suit }); visit(depth + 1); assignments.pop(); used.delete(key);
+    }
+  };
+  visit(0);
+  return best;
+}
+
 export function calculateTexasPots(players = [], dealerSeat = 0) {
   const contributed = players.filter((player) => Number(player.totalContribution ?? 0) > 0);
   const levels = [...new Set(contributed.map((player) => Number(player.totalContribution)))].sort((a, b) => a - b);
@@ -139,6 +166,17 @@ export function allowedActions(room, player) {
   return { actions, toCall, minRaiseTo, maxRaiseTo };
 }
 
-export function makeDeck() {
+export function makeDeck(variant = 'standard') {
+  if (variant === 'ghost') {
+    const cards = [];
+    for (let copy = 0; copy < 2; copy += 1) {
+      cards.push(...['S', 'H', 'C', 'D'].flatMap((suit) => [10, 11, 12, 13, 14].map((rank) => ({ rank, suit, deck:copy }))));
+      cards.push(
+        { rank:0, suit:'JOKER_BIG', joker:true, deck:copy }, { rank:0, suit:'JOKER_BIG', joker:true, deck:copy },
+        { rank:0, suit:'JOKER_SMALL', joker:true, deck:copy }, { rank:0, suit:'JOKER_SMALL', joker:true, deck:copy }
+      );
+    }
+    return cards;
+  }
   return ['S', 'H', 'C', 'D'].flatMap((suit) => Array.from({ length: 13 }, (_, index) => ({ rank: index + 2, suit })));
 }

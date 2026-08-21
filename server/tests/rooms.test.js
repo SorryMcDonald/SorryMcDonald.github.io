@@ -75,7 +75,7 @@ describe('room directory and departure', () => {
     const acted = await actionRequest;
 
     expect(acted.statusCode).toBe(200);
-    expect(Date.parse(acted.json().room.turnStartedAt)).toBe(now);
+    expect(acted.json().room.turnStartedAt).toBeNull();
     await app.close();
   });
 

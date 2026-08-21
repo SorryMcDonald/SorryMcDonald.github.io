@@ -393,7 +393,13 @@ function renderRoom() {
   $('createRoomButton').hidden = true;
   $('joinRoomButton').hidden = true;
   $('leaveRoomButton').hidden = false;
-  $('roomCode').textContent = room.tournament ? `锦标赛 · ${room.tournament.tableNumber} 桌` : room.code;
+  const variantLabel = { laizi:'癞子炸金花' }[room.variant] ?? '炸金花';
+  $('roomCode').textContent = room.tournament ? `${variantLabel} · ${room.tournament.tableNumber} 桌` : room.code;
+  $('rulesTitle').textContent = `${variantLabel}规则`;
+  const rulesNote = document.querySelector('#rulesDialog .rules-note p');
+  if (rulesNote) rulesNote.textContent = room.variant === 'laizi'
+    ? '癞子炸金花加入两张大王和两张小王，王可组成当前手牌能达到的最大牌型。特殊赛每人自动拥有 200,000 虚拟筹码，底注与最低加注均为 1,000，冠军获得 500,000 豆。'
+    : '牌局开始后加入的玩家先等待下一局。下一局由房主手动开始；观战者只能查看牌局，不能下注或发送房间聊天。';
   $('roundStatus').textContent = ROOM_STATUS_LABELS[room.status] || room.status;
   $('potValue').textContent = Number(room.pot || 0).toLocaleString();
   const ownPlayer = room.players.find((player) => player.userId === state.user.id);
@@ -423,34 +429,12 @@ function addFeed(text) {
 }
 
 function updateCountdown() {
-  const room = state.room;
-  const countdown = document.querySelector('.player-seat.current .turn-countdown');
-  if (!room || room.status !== 'betting' || !room.turnDeadlineAt || !countdown) return;
-  const milliseconds = new Date(room.turnDeadlineAt).getTime() - Date.now();
-  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
-  countdown.textContent = `${seconds}s`;
-  countdown.classList.toggle('danger', seconds <= 10);
-  const key = `${room.roundNumber}:${room.currentTurn}:${room.turnDeadlineAt}`;
-  if (seconds <= 10 && seconds > 0 && state.dangerPlayedKey !== key) {
-    state.dangerPlayedKey = key;
-    playEffect('danger');
-  }
-  if (seconds === 0 && state.countdownRefreshKey !== key) {
-    state.countdownRefreshKey = key;
-    window.setTimeout(() => loadRoom().catch(() => {}), 350);
-  }
+  // Turn deadlines are retained only for backwards-compatible persisted
+  // state. Production no longer displays or acts on an automatic timeout.
 }
 
 function startCountdown() {
-  const room = state.room;
-  const key = room?.turnDeadlineAt ?? null;
-  if (state.countdownKey !== key) {
-    if (state.countdownTimer) clearInterval(state.countdownTimer);
-    state.countdownTimer = null;
-    state.countdownKey = key;
-    if (key) state.countdownTimer = window.setInterval(updateCountdown, 250);
-  }
-  updateCountdown();
+  stopCountdown();
 }
 
 function stopCountdown() {

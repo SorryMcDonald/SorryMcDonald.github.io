@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { user:null, tournament:null, serverOffset:0, timer:null };
+const state = { user:null, tournament:null, permanentTournament:null, serverOffset:0, timer:null };
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -19,6 +19,13 @@ function statusText(status) {
 
 function entryStatusText(status) {
   return ({ active:'参赛中', eliminated:'筹码归零，已淘汰', left:'已退出，不可重入', champion:'本周冠军' })[status] ?? status;
+}
+
+function trackDescription(track) {
+  if (track.variant === 'laizi') return '6 人桌 · 20 万虚拟筹码 · 底注/最低加注 1000';
+  if (track.variant === 'ghost') return '9 人桌 · 10-A 双牌组 · 8 张王 · 最低加注 1000';
+  if (track.variant === 'wild') return '9 人桌 · 每人每手 1 张技能 · 最低加注 1000';
+  return track.game === 'texas' ? '9 人桌 · 100 / 200 盲注' : '6 人桌 · 10 豆底注';
 }
 
 function renderAccount() {
@@ -47,16 +54,16 @@ async function submitEntry(game, input, button) {
   }
 }
 
-function renderTracks() {
-  const list = $('trackList');
+function renderTracks(tournament = state.tournament, listId = 'trackList') {
+  const list = $(listId);
   list.replaceChildren();
-  for (const track of state.tournament.tracks) {
+  for (const track of tournament.tracks) {
     const card = document.createElement('section');
     card.className = 'track-card';
     card.dataset.game = track.game;
     const head = document.createElement('div');
     head.className = 'track-head';
-    head.innerHTML = `<div><h2>${track.label}</h2><p>${track.game === 'texas' ? '9 人桌 · 10 / 20 盲注' : '6 人桌 · 10 豆底注'}</p></div><span class="track-state">${statusText(track.status)}</span>`;
+    head.innerHTML = `<div><h2>${track.label}</h2><p>${trackDescription(track)}</p></div><span class="track-state">${statusText(track.status)}</span>`;
     const stats = document.createElement('div');
     stats.className = 'track-stats';
     stats.innerHTML = `<div><span>参赛玩家</span><strong>${track.playerCount}</strong></div><div><span>当前牌桌</span><strong>${track.tableCount}</strong></div><div><span>最低带入</span><strong>${formatNumber(track.minimumBuyIn)}</strong></div><div><span>最高带入</span><strong>${formatNumber(track.maximumBuyIn)}</strong></div>`;
@@ -78,9 +85,11 @@ function renderTracks() {
       const form = document.createElement('form'); form.className = 'entry-form';
       const label = document.createElement('label'); label.textContent = '带入筹码';
       const input = document.createElement('input'); input.type = 'number'; input.min = String(track.minimumBuyIn); input.max = String(track.maximumBuyIn);
-      input.value = String(Math.max(track.minimumBuyIn, Math.min(10000, Number(state.user.beans ?? 0))));
+      const virtual = Boolean(track.virtualChips);
+      input.value = String(virtual ? track.virtualChips : Math.max(track.minimumBuyIn, Math.min(10000, Number(state.user.beans ?? 0))));
+      input.readOnly = virtual;
       const button = document.createElement('button'); button.className = 'primary-button'; button.type = 'submit'; button.textContent = '报名并入桌';
-      button.disabled = track.status !== 'registration_open' || Number(state.user.beans ?? 0) < track.minimumBuyIn;
+      button.disabled = track.status !== 'registration_open' || (!virtual && Number(state.user.beans ?? 0) < track.minimumBuyIn);
       form.append(label, input, button); form.addEventListener('submit', (event) => { event.preventDefault(); submitEntry(track.game, input, button); });
       card.append(form);
     }
@@ -104,12 +113,18 @@ function updateCountdown() {
 }
 
 async function loadTournament() {
-  const data = await api('/api/tournaments/current');
-  state.tournament = data.tournament;
-  state.serverOffset = Date.parse(data.tournament.serverTime) - Date.now();
-  $('statusBadge').textContent = statusText(data.tournament.status);
-  $('scheduleDate').textContent = `${data.tournament.key} 12:00 开放 · 12:30 停止报名`;
-  renderTracks(); updateCountdown();
+  const [weeklyData, permanentData] = await Promise.all([
+    api('/api/tournaments/current'),
+    api('/api/tournaments/current?kind=permanent')
+  ]);
+  state.tournament = weeklyData.tournament;
+  state.permanentTournament = permanentData.tournament;
+  state.serverOffset = Date.parse(state.tournament.serverTime) - Date.now();
+  $('statusBadge').textContent = statusText(state.tournament.status);
+  $('scheduleDate').textContent = `${state.tournament.key.replace('weekly:', '')} 12:00 开放 · 12:30 停止报名`;
+  $('permanentStatusBadge').textContent = statusText(state.permanentTournament.status);
+  $('permanentScheduleDate').textContent = `${state.permanentTournament.key.replace('permanent:', '')} 场 · 全天报名，上海时间每两小时开赛`;
+  renderTracks(state.tournament, 'trackList'); renderTracks(state.permanentTournament, 'trackListPermanent'); updateCountdown();
 }
 
 $('refreshButton').addEventListener('click', async () => {

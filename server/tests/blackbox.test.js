@@ -210,7 +210,7 @@ describe('public black-box gameplay', () => {
     await closeSocket(global);
   });
 
-  it('proves real sixty-second action timeout, reconnect cancellation, and disconnect expiry in one window', async () => {
+  it('keeps actions open indefinitely while still expiring disconnected rooms', async () => {
     const { origin } = await startBlackBoxServer();
     const actionPlayers = await Promise.all([register(origin, 0, 'timeout'), register(origin, 1, 'timeout')]);
     const actionRoom = await createRoom(origin, actionPlayers);
@@ -227,8 +227,8 @@ describe('public black-box gameplay', () => {
     await new Promise((resolve) => setTimeout(resolve, 60_500));
     const timedOut = await request(origin, `/api/rooms/${actionRoom.id}`, { cookie: actionPlayers[1].cookie });
     expect(timedOut.status).toBe(200);
-    expect(timedOut.body.room.status).toBe('settled');
-    expect(timedOut.body.room.players.some((player) => player.lastAction === 'timeout_fold')).toBe(true);
+    expect(timedOut.body.room.status).toBe('betting');
+    expect(timedOut.body.room.players.every((player) => player.lastAction !== 'timeout_fold')).toBe(true);
     const reclaimed = await request(origin, `/api/rooms/${disconnectRoom.id}`, { cookie: disconnected.cookie });
     expect(reclaimed.status).toBe(404);
   }, 70_000);

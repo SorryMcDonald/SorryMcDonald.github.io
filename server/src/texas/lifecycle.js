@@ -41,12 +41,13 @@ function restoreUsers(store, snapshot) {
 }
 
 export class TexasLifecycleController {
-  constructor({ service, persistence, broadcastRoom, reclaimRoomSockets, clock = systemClock, mutationQueue, onError } = {}) {
+  constructor({ service, persistence, broadcastRoom, reclaimRoomSockets, clock, autoTimeout = Boolean(clock), mutationQueue, onError } = {}) {
     this.service = service;
     this.persistence = persistence;
     this.broadcastRoom = broadcastRoom;
     this.reclaimRoomSockets = reclaimRoomSockets;
-    this.clock = clock;
+    this.clock = clock ?? systemClock;
+    this.autoTimeout = Boolean(autoTimeout);
     this.mutationQueue = mutationQueue ?? mutationQueueFor(service?.store);
     this.queues = new Map();
     this.turnTimers = new Map();
@@ -171,7 +172,7 @@ export class TexasLifecycleController {
 
   scheduleTurn(room, minimumDelay = 0, retryAttempt = 0) {
     this.cancelTurn(room.id);
-    if (this.closing || !room.turnDeadlineAt || room.currentTurn < 0 || !room.hand?.id) return;
+    if (!this.autoTimeout || this.closing || !room.turnDeadlineAt || room.currentTurn < 0 || !room.hand?.id) return;
     const player = [...room.players.values()].find((candidate) => candidate.seat === room.currentTurn && candidate.inHand && !candidate.folded && !candidate.allIn && !candidate.left);
     if (!player) return;
     const binding = { roomId:room.id, roomVersion:room.version, handId:room.hand.id, currentTurn:room.currentTurn, actionSeq:player.actionSeq };

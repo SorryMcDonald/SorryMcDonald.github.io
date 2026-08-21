@@ -3,10 +3,15 @@ import { randomUUID } from 'node:crypto';
 export const TOURNAMENT_BUY_IN_CAP = 200_000;
 export const TOURNAMENT_REGISTRATION_MINUTES = 30;
 export const TOURNAMENT_TIME_ZONE = 'Asia/Shanghai';
+export const SPECIAL_TOURNAMENT_CHIPS = 200_000;
+export const SPECIAL_TOURNAMENT_PRIZE = 500_000;
 
 const GAME_CONFIG = {
-  texas: { label:'德州扑克', capacity:9, minimumBuyIn:4000, path:'/dezhou.html' },
-  zhajinhua: { label:'炸金花', capacity:6, minimumBuyIn:10, path:'/' }
+  texas: { label:'德州扑克', capacity:9, minimumBuyIn:4000, path:'/dezhou.html', competition:'weekly', service:'texas' },
+  zhajinhua: { label:'炸金花', capacity:6, minimumBuyIn:10, path:'/', competition:'weekly', service:'zhajinhua' },
+  laizi_zhajinhua: { label:'癞子炸金花', capacity:6, minimumBuyIn:SPECIAL_TOURNAMENT_CHIPS, path:'/', competition:'permanent', service:'zhajinhua', variant:'laizi', virtualChips:SPECIAL_TOURNAMENT_CHIPS, championPrize:SPECIAL_TOURNAMENT_PRIZE, ante:1000 },
+  ghost_texas: { label:'鬼王德州', capacity:9, minimumBuyIn:SPECIAL_TOURNAMENT_CHIPS, path:'/dezhou.html', competition:'permanent', service:'texas', variant:'ghost', virtualChips:SPECIAL_TOURNAMENT_CHIPS, championPrize:SPECIAL_TOURNAMENT_PRIZE, smallBlind:1000, bigBlind:1000 },
+  wild_texas: { label:'百变德州', capacity:9, minimumBuyIn:SPECIAL_TOURNAMENT_CHIPS, path:'/dezhou.html', competition:'permanent', service:'texas', variant:'wild', virtualChips:SPECIAL_TOURNAMENT_CHIPS, championPrize:SPECIAL_TOURNAMENT_PRIZE, smallBlind:1000, bigBlind:1000 }
 };
 
 function httpError(statusCode, message) {
@@ -30,14 +35,37 @@ function tournamentSchedule(timestamp, registrationMinutes) {
   const localKeyDate = new Date(Date.UTC(year, month, wednesdayDate));
   const key = `${localKeyDate.getUTCFullYear()}-${String(localKeyDate.getUTCMonth() + 1).padStart(2, '0')}-${String(localKeyDate.getUTCDate()).padStart(2, '0')}`;
   return {
-    key,
+    kind:'weekly',
+    key:`weekly:${key}`,
     opensAt:new Date(opensAtMs).toISOString(),
     registrationClosesAt:new Date(opensAtMs + registrationMinutes * 60_000).toISOString()
   };
 }
 
+function permanentSchedule(timestamp) {
+  const now = Number(timestamp);
+  const shanghai = new Date(now + 8 * 60 * 60 * 1000);
+  const year = shanghai.getUTCFullYear();
+  const month = shanghai.getUTCMonth();
+  const date = shanghai.getUTCDate();
+  const localHour = shanghai.getUTCHours();
+  // Registration stays open all day. Every entrant is assigned to the next
+  // odd-hour Shanghai slot (13:00, 15:00, 17:00, ...).
+  const slotHour = localHour % 2 === 1 ? localHour + 2 : localHour + 1;
+  const opensAtMs = Date.UTC(year, month, date, slotHour - 8, 0, 0, 0);
+  const localSlot = new Date(opensAtMs + 8 * 60 * 60 * 1000);
+  const key = `${localSlot.getUTCFullYear()}-${String(localSlot.getUTCMonth() + 1).padStart(2, '0')}-${String(localSlot.getUTCDate()).padStart(2, '0')}-${String(localSlot.getUTCHours()).padStart(2, '0')}`;
+  return {
+    kind:'permanent',
+    key:`permanent:${key}`,
+    opensAt:new Date(opensAtMs).toISOString(),
+    registrationClosesAt:new Date(opensAtMs).toISOString()
+  };
+}
+
 function safeRoomStatus(game, status) {
-  return game === 'texas' ? ['waiting','settled','closed'].includes(status) : ['waiting','settled','finished'].includes(status);
+  const config = GAME_CONFIG[game] ?? {};
+  return config.service === 'texas' ? ['waiting','settled','closed'].includes(status) : ['waiting','settled','finished'].includes(status);
 }
 
 function activeRoomPlayer(room, userId) {
@@ -59,18 +87,18 @@ export class TournamentService {
   now() { return Number(this.clock?.now?.() ?? Date.now()); }
 
   gameService(game) {
-    if (game === 'texas') return this.texasService;
-    if (game === 'zhajinhua') return this.roomService;
+    if (GAME_CONFIG[game]?.service === 'texas') return this.texasService;
+    if (GAME_CONFIG[game]?.service === 'zhajinhua') return this.roomService;
     throw httpError(400, '不支持的锦标赛游戏');
   }
 
   createEdition(schedule) {
     const edition = {
       id:randomUUID(), key:schedule.key, opensAt:schedule.opensAt,
-      registrationClosesAt:schedule.registrationClosesAt, status:'scheduled',
+      registrationClosesAt:schedule.registrationClosesAt, status:'scheduled', kind:schedule.kind ?? 'weekly',
       timezone:TOURNAMENT_TIME_ZONE, tracks:new Map()
     };
-    for (const game of Object.keys(GAME_CONFIG)) {
+    for (const game of Object.keys(GAME_CONFIG).filter((key) => GAME_CONFIG[key].competition === (schedule.kind ?? 'weekly'))) {
       edition.tracks.set(game, {
         id:randomUUID(), game, status:'scheduled', championUserId:null,
         championPrize:0, entries:new Map(), tables:new Map(), nextTableNumber:1
@@ -85,6 +113,15 @@ export class TournamentService {
     return this.editions.get(schedule.key) ?? this.createEdition(schedule);
   }
 
+  permanentEdition(now = this.now()) {
+    const schedule = permanentSchedule(now);
+    return this.editions.get(schedule.key) ?? this.createEdition(schedule);
+  }
+
+  editionFor(kind = 'weekly', now = this.now()) {
+    return kind === 'permanent' ? this.permanentEdition(now) : this.scheduledEdition(now);
+  }
+
   editionById(editionId) {
     return [...this.editions.values()].find((edition) => edition.id === editionId) ?? null;
   }
@@ -92,15 +129,17 @@ export class TournamentService {
   refreshEdition(edition, now = this.now()) {
     const opensAt = Date.parse(edition.opensAt);
     const closesAt = Date.parse(edition.registrationClosesAt);
-    if (now < opensAt) edition.status = 'scheduled';
+    if (edition.kind === 'permanent' && now < opensAt) edition.status = 'registration_open';
+    else if (now < opensAt) edition.status = 'scheduled';
     else if (now < closesAt) edition.status = 'registration_open';
     else if (edition.status !== 'completed' && edition.status !== 'cancelled') edition.status = 'running';
     for (const track of edition.tracks.values()) {
       if (track.status === 'completed' || track.status === 'cancelled') continue;
-      if (now < opensAt) track.status = 'scheduled';
+      if (edition.kind === 'permanent' && now < opensAt) track.status = 'registration_open';
+      else if (now < opensAt) track.status = 'scheduled';
       else if (now < closesAt) track.status = 'registration_open';
       else track.status = 'running';
-      if (now >= closesAt) this.finishTrackIfPossible(edition, track);
+      if (now >= closesAt && edition.kind !== 'permanent') this.finishTrackIfPossible(edition, track);
     }
     const terminal = [...edition.tracks.values()].every((track) => ['completed','cancelled'].includes(track.status));
     if (terminal) edition.status = 'completed';
@@ -119,16 +158,18 @@ export class TournamentService {
     };
   }
 
-  view(userId, now = this.now()) {
+  view(userId, now = this.now(), kind = 'weekly') {
     const joinedEdition = userId ? [...this.editions.values()].find((candidate) => (
+      (candidate.kind ?? 'weekly') === kind &&
       [...candidate.tracks.values()].some((track) => this.entryForUser(track, userId)?.status === 'active')
     )) : null;
-    const edition = this.refreshEdition(joinedEdition ?? this.scheduledEdition(now), now);
+    const edition = this.refreshEdition(joinedEdition ?? this.editionFor(kind, now), now);
     const tracks = [...edition.tracks.values()].map((track) => {
       const entry = userId ? this.entryForUser(track, userId) : null;
       const champion = track.championUserId ? this.store.users.get(track.championUserId) : null;
       return {
         id:track.id, game:track.game, label:GAME_CONFIG[track.game].label, status:track.status,
+        variant:GAME_CONFIG[track.game].variant ?? null, virtualChips:GAME_CONFIG[track.game].virtualChips ?? null,
         minimumBuyIn:GAME_CONFIG[track.game].minimumBuyIn, maximumBuyIn:TOURNAMENT_BUY_IN_CAP,
         playerCount:[...track.entries.values()].filter((value) => value.status === 'active').length,
         tableCount:[...track.tables.values()].filter((table) => table.status === 'active').length, champion:champion ? { userId:champion.id, nickname:champion.nickname, prize:track.championPrize } : null,
@@ -136,7 +177,7 @@ export class TournamentService {
       };
     });
     return {
-      id:edition.id, key:edition.key, status:edition.status, timezone:edition.timezone,
+      id:edition.id, key:edition.key, kind:edition.kind ?? kind, status:edition.status, timezone:edition.timezone,
       opensAt:edition.opensAt, registrationClosesAt:edition.registrationClosesAt,
       serverTime:new Date(now).toISOString(), tracks
     };
@@ -152,27 +193,29 @@ export class TournamentService {
   }
 
   enter(game, userId, rawBuyIn) {
+    const config = GAME_CONFIG[game];
+    if (!config) throw httpError(400, '不支持的锦标赛游戏');
     const now = this.now();
-    const edition = this.refreshEdition(this.scheduledEdition(now), now);
-    if (edition.status === 'scheduled') throw httpError(403, `锦标赛将在 ${edition.opensAt} 开放`);
-    if (edition.status !== 'registration_open') throw httpError(409, '本周锦标赛报名已经结束');
+    const edition = this.refreshEdition(this.editionFor(config.competition, now), now);
+    if (edition.status === 'scheduled') throw httpError(403, `比赛将在 ${edition.opensAt} 开放`);
+    if (edition.status !== 'registration_open') throw httpError(409, config.competition === 'permanent' ? '本场比赛报名已经结束，请报名下一场' : '本周锦标赛报名已经结束');
     const track = edition.tracks.get(game);
     if (!track) throw httpError(400, '不支持的锦标赛游戏');
     if (this.entryForUser(track, userId)) throw httpError(409, '你已经参加或退出过本周该项目，不能重复加入');
-    const config = GAME_CONFIG[game];
-    const buyIn = Math.floor(number(rawBuyIn));
+    const virtual = Boolean(config.virtualChips);
+    const buyIn = virtual ? config.virtualChips : Math.floor(number(rawBuyIn));
     if (buyIn < config.minimumBuyIn || buyIn > TOURNAMENT_BUY_IN_CAP) {
       throw httpError(400, `带入筹码需在 ${config.minimumBuyIn}-${TOURNAMENT_BUY_IN_CAP} 之间`);
     }
     const user = this.store.users.get(userId);
     if (!user) throw httpError(404, '用户不存在');
-    if (number(user.beans) < buyIn) throw httpError(400, '账户豆子不足以报名');
+    if (!virtual && number(user.beans) < buyIn) throw httpError(400, '账户豆子不足以报名');
 
     const entry = {
       id:randomUUID(), userId, nickname:user.nickname, buyIn, chips:buyIn,
       status:'active', roomId:null, enteredAt:new Date(now).toISOString(), eliminatedAt:null
     };
-    const tournament = { editionId:edition.id, trackId:track.id, game, entryId:entry.id, tableNumber:null, completed:false };
+    const tournament = { editionId:edition.id, trackId:track.id, game, variant:config.variant ?? null, entryId:entry.id, tableNumber:null, completed:false, virtualChips:virtual, championPrize:config.championPrize ?? null };
     const service = this.gameService(game);
     let table = this.availableTable(track);
     const previousVersion = table ? this.gameService(game).room(table.roomId).version : -1;
@@ -180,24 +223,24 @@ export class TournamentService {
     let room;
     if (!table) {
       tournament.tableNumber = track.nextTableNumber++;
-      room = game === 'texas'
-        ? service.createTournamentRoom(userId, { buyIn, minBuyIn:4000, maxBuyIn:TOURNAMENT_BUY_IN_CAP, maxPlayers:config.capacity, smallBlind:100, bigBlind:200 }, tournament)
-        : service.createTournamentRoom(userId, { buyIn, ante:10 }, tournament);
+      room = config.service === 'texas'
+        ? service.createTournamentRoom(userId, { buyIn, minBuyIn:config.minimumBuyIn, maxBuyIn:TOURNAMENT_BUY_IN_CAP, maxPlayers:config.capacity, smallBlind:config.smallBlind ?? 100, bigBlind:config.bigBlind ?? 200, variant:config.variant }, { ...tournament, virtualChips:virtual, championPrize:config.championPrize ?? null, minRaise:config.bigBlind ?? 200 })
+        : service.createTournamentRoom(userId, { buyIn, ante:config.ante ?? 10, variant:config.variant }, { ...tournament, virtualChips:virtual, championPrize:config.championPrize ?? null, minRaise:config.ante ?? 10 });
       table = { id:randomUUID(), roomId:room.id, number:tournament.tableNumber, status:'active' };
       track.tables.set(table.id, table);
     } else {
       tournament.tableNumber = table.number;
       room = service.room(table.roomId);
-      service.joinTournamentRoom(room.id, userId, { buyIn }, tournament);
+      service.joinTournamentRoom(room.id, userId, { buyIn }, { ...tournament, virtualChips:virtual, championPrize:config.championPrize ?? null });
     }
     entry.roomId = room.id;
     track.entries.set(entry.id, entry);
-    this.pendingLedger.push({
+    if (!virtual) this.pendingLedger.push({
       idempotencyKey:`tournament:${track.id}:buy-in:${entry.id}`, trackId:track.id, userId,
       entryType:'buy_in', amount:-buyIn, balanceAfter:number(user.beans), metadata:{ game, roomId:room.id }
     });
     return {
-      edition:this.view(userId, now), entry:this.serializeEntry(entry), roomId:room.id,
+      edition:this.view(userId, now, config.competition), entry:this.serializeEntry(entry), roomId:room.id,
       gamePath:config.path, room:service.snapshot(room.id, userId),
       mutation:{
         previousVersion, eventStart, editionId:edition.id, trackId:track.id,
@@ -210,14 +253,15 @@ export class TournamentService {
   findTrackByRoom(game, roomId) {
     for (const edition of this.editions.values()) {
       for (const track of edition.tracks.values()) {
-        if (track.game === game && [...track.tables.values()].some((table) => table.roomId === roomId)) return { edition, track };
+        const sameService = GAME_CONFIG[track.game]?.service === (GAME_CONFIG[game]?.service ?? game);
+        if (sameService && [...track.tables.values()].some((table) => table.roomId === roomId)) return { edition, track };
       }
     }
     return null;
   }
 
   playerChips(game, player) {
-    return game === 'texas' ? number(player?.stack) : number(player?.tournamentChips);
+    return GAME_CONFIG[game]?.service === 'texas' ? number(player?.stack) : number(player?.tournamentChips);
   }
 
   reconcileRoom(game, roomId) {
@@ -300,4 +344,4 @@ export class TournamentService {
   }
 }
 
-export { GAME_CONFIG, tournamentSchedule };
+export { GAME_CONFIG, permanentSchedule, tournamentSchedule };

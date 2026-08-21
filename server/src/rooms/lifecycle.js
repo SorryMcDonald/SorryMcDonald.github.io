@@ -66,18 +66,20 @@ function persistenceRetryDelay(retryAttempt) {
 }
 
 export class RoomLifecycleController {
-  constructor({ service, persistence, broadcastRoom, broadcastGlobal, reclaimRoomSockets, clock = systemClock, onError, mutationQueue } = {}) {
+  constructor({ service, persistence, broadcastRoom, broadcastGlobal, reclaimRoomSockets, clock, autoTimeout = Boolean(clock), onError, mutationQueue } = {}) {
     this.service = service;
     this.persistence = persistence;
     this.broadcastRoom = broadcastRoom;
     this.broadcastGlobal = broadcastGlobal;
     this.reclaimRoomSockets = reclaimRoomSockets;
     this.mutationQueue = mutationQueue ?? mutationQueueFor(service?.store);
+    const sourceClock = clock ?? systemClock;
     this.clock = {
-      now: (...args) => clock.now(...args),
-      setTimeout: (...args) => clock.setTimeout(...args),
-      clearTimeout: (...args) => clock.clearTimeout(...args)
+      now: (...args) => sourceClock.now(...args),
+      setTimeout: (...args) => sourceClock.setTimeout(...args),
+      clearTimeout: (...args) => sourceClock.clearTimeout(...args)
     };
+    this.autoTimeout = Boolean(autoTimeout);
     this.onError = onError;
     this.queues = new Map();
     this.turnTimers = new Map();
@@ -219,7 +221,7 @@ export class RoomLifecycleController {
   scheduleTurn(room, minimumDelay = 0, retryAttempt = 0) {
     if (this.closing) return;
     this.cancelTurn(room.id);
-    if (room.status !== 'betting' || room.currentTurn < 0 || !room.turnDeadlineAt || !room.round?.id) return;
+    if (!this.autoTimeout || room.status !== 'betting' || room.currentTurn < 0 || !room.turnDeadlineAt || !room.round?.id) return;
     const player = [...room.players.values()].find((candidate) => candidate.seat === room.currentTurn && candidate.inRound && !candidate.folded && !candidate.allIn && !candidate.left);
     if (!player) return;
     const binding = {

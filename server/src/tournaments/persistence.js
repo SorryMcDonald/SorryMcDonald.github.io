@@ -26,7 +26,9 @@ export function createTournamentPersistence({ db, service }) {
         service.editions.set(row.edition_key, {
           id:row.id, key:row.edition_key, opensAt:new Date(row.opens_at).toISOString(),
           registrationClosesAt:new Date(row.registration_closes_at).toISOString(),
-          status:row.status, timezone:row.timezone, tracks:new Map()
+          status:row.status, timezone:row.timezone,
+          kind:row.competition_kind ?? (String(row.edition_key).startsWith('permanent:') ? 'permanent' : 'weekly'),
+          tracks:new Map()
         });
       }
       for (const row of tracks) {
@@ -60,10 +62,12 @@ export function createTournamentPersistence({ db, service }) {
       const ledger=service.pendingLedger.filter((entry) => trackIds.has(entry.trackId));
       await transaction(db, async (client) => {
         await client.query(`INSERT INTO tournament_editions
-          (id,edition_key,opens_at,registration_closes_at,status,timezone)
-          VALUES ($1,$2,$3,$4,$5,$6)
-          ON CONFLICT (id) DO UPDATE SET status=excluded.status,registration_closes_at=excluded.registration_closes_at`,
-          [edition.id,edition.key,edition.opensAt,edition.registrationClosesAt,edition.status,edition.timezone]);
+          (id,edition_key,opens_at,registration_closes_at,status,timezone,competition_kind)
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
+          ON CONFLICT (id) DO UPDATE SET status=excluded.status,
+            registration_closes_at=excluded.registration_closes_at,
+            competition_kind=excluded.competition_kind`,
+          [edition.id,edition.key,edition.opensAt,edition.registrationClosesAt,edition.status,edition.timezone,edition.kind ?? 'weekly']);
         for (const track of edition.tracks.values()) {
           await client.query(`INSERT INTO tournament_tracks
             (id,edition_id,game,status,champion_user_id,champion_prize,next_table_number)
