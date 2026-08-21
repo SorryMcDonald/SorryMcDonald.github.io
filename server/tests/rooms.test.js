@@ -230,6 +230,27 @@ function startedService(playerCount = 2) {
   return { service, store, room };
 }
 
+function startedLaiziService() {
+  const store = gameStore(2);
+  const service = new RoomService({ store });
+  const tournament = {
+    trackId: 'laizi-track',
+    game: 'laizi_zhajinhua',
+    variant: 'laizi',
+    virtualChips: true,
+    championPrize: 500000
+  };
+  const input = { buyIn: 200000, ante: 1000, variant: 'laizi' };
+  const room = service.createTournamentRoom('user-0', input, tournament);
+  service.joinTournamentRoom(room.id, 'user-1', { buyIn: input.buyIn }, tournament);
+  service.startNextRound(room.id, 'user-0');
+  const attacker = [...room.players.values()].find((player) => player.userId === 'user-0');
+  const target = [...room.players.values()].find((player) => player.userId === 'user-1');
+  attacker.cards = [{ rank: 0, suit: 'JOKER_BIG', joker: true }, { rank: 14, suit: 'S' }, { rank: 14, suit: 'H' }];
+  target.cards = [{ rank: 13, suit: 'S' }, { rank: 13, suit: 'H' }, { rank: 13, suit: 'D' }];
+  return { service, room, attacker, target };
+}
+
 describe('RoomService approved game state machine', () => {
   it('validates room codes and antes and retries generated code collisions', () => {
     const store = gameStore(4);
@@ -361,5 +382,29 @@ describe('RoomService approved game state machine', () => {
 
     expect(attacker.folded).toBe(true);
     expect(target.folded).toBe(false);
+  });
+
+  it('uses the best wild hand when resolving a laizi comparison', () => {
+    const { service, room, attacker, target } = startedLaiziService();
+
+    service.action(room.id, attacker.userId, {
+      action: 'compare', targetSeat: target.seat, actionSeq: 1
+    });
+
+    expect(attacker.folded).toBe(false);
+    expect(target.folded).toBe(true);
+    expect(room.events.findLast((event) => event.eventType === 'compare_resolved')?.payload)
+      .toMatchObject({ winnerUserId: attacker.userId, loserUserId: target.userId });
+  });
+
+  it('uses the best wild hands when distributing a laizi settlement pot', () => {
+    const { service, room, attacker, target } = startedLaiziService();
+
+    service.settle(room);
+
+    expect(room.lastResults.find((result) => result.userId === attacker.userId)?.payout).toBe(2000);
+    expect(room.lastResults.find((result) => result.userId === target.userId)?.payout).toBe(0);
+    expect(attacker.tournamentChips).toBe(201000);
+    expect(target.tournamentChips).toBe(199000);
   });
 });

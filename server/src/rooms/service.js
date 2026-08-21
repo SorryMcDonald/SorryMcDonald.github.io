@@ -534,7 +534,10 @@ export class RoomService {
     debit(room, attacker, user, fee);
     attacker.lastAction = 'compare';
     attacker.actionSeq = seq;
-    const attackerWon = compareHands(attacker.cards, targetPlayer.cards) > 0;
+    const attackerWon = compareHands(
+      evaluateRoundHand(room, attacker.cards),
+      evaluateRoundHand(room, targetPlayer.cards)
+    ) > 0;
     const winner = attackerWon ? attacker : targetPlayer;
     const loser = attackerWon ? targetPlayer : attacker;
     loser.folded = true;
@@ -614,7 +617,10 @@ export class RoomService {
     // Mark only after the invariant check. A recoverable validation failure
     // must not leave a betting round permanently marked as settled.
     room.round.idempotency = true;
-    const payouts = calculateSidePotPayouts(players);
+    const payouts = calculateSidePotPayouts(players.map((player) => ({
+      ...player,
+      hand: evaluateRoundHand(room, player.cards)
+    })));
     const results = [];
     for (const player of players) {
       const payout = Number(payouts[player.id] ?? 0);
