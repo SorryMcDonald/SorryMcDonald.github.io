@@ -183,7 +183,8 @@ export class RoomService {
       eventSeq: 0,
       messages: [],
       chatLastAt: new Map(),
-      round: null
+      round: null,
+      lastWinnerUserId: null
     };
     this.rooms.set(id, room);
     appendEvent(room, 'room_created', { code: room.code });
@@ -213,6 +214,10 @@ export class RoomService {
       nickname: user.nickname,
       seat: chosenSeat,
       inRound: false,
+      waiting: true,
+      ready: false,
+      participated: false,
+      roundDecision: null,
       folded: false,
       allIn: false,
       seen: false,
@@ -232,6 +237,23 @@ export class RoomService {
     touch(room);
     appendEvent(room, 'player_joined', { userId, nickname: user.nickname, seat: chosenSeat });
     return player;
+  }
+
+  setReady(roomId, userId, ready = true, { decision } = {}) {
+    const room = this.room(roomId);
+    const player = seatedPlayers(room).find((item) => item.userId === userId);
+    if (!player || room.spectators.has(userId)) throw httpError(403, '观战者不能准备');
+    if (player.inRound && room.status === 'betting') throw httpError(409, '当前牌局尚未结束');
+    if (room.status !== 'waiting' && room.status !== 'settled' && player.participated) throw httpError(409, '请等待本局结算');
+    if (decision !== undefined && decision !== 'spectate') throw httpError(400, '无效的牌局选择');
+    player.ready = decision === 'spectate' ? false : Boolean(ready);
+    if (decision === 'spectate') player.roundDecision = 'spectate';
+    else if (player.participated && room.status === 'settled') player.roundDecision = player.ready ? 'next' : 'pending';
+    else if (player.ready) player.roundDecision = null;
+    player.waiting = !player.inRound;
+    touch(room);
+    appendEvent(room, 'player_ready', { userId, ready:player.ready, decision:player.roundDecision, roundNumber:room.roundNumber });
+    return room;
   }
 
   leaveRoom(roomId, userId, { now } = {}) {
@@ -288,9 +310,9 @@ export class RoomService {
 
   setSpectating(roomId, userId, enabled) {
     const room = this.room(roomId);
-    if (enabled && !room.allowSpectators) throw httpError(403, '房主未开启观战');
     const player = seatedPlayers(room).find((item) => item.userId === userId);
-    if (enabled && player && !['waiting', 'settled'].includes(room.status)) throw httpError(409, '当前阶段不能切换观战');
+    if (enabled && !room.allowSpectators && !player) throw httpError(403, '房主未开启观战');
+    if (enabled && player && player.inRound && !['waiting', 'settled'].includes(room.status)) throw httpError(409, '当前牌局中不能切换观战');
     if (enabled) {
       if (player) player.left = true;
       room.spectators.add(userId);
@@ -319,9 +341,17 @@ export class RoomService {
     if (room.dealerUserId && !seatedPlayers(room).some((player) => player.userId === room.dealerUserId && userBeans(this.user(player.userId)) > 0)) {
       this.promoteDealer(room);
     }
-    if (room.dealerUserId && room.dealerUserId !== userId) throw httpError(403, '请由庄家开始下一局');
-    const players = seatedPlayers(room).filter((player) => !room.spectators.has(player.userId) && userBeans(this.user(player.userId)) > 0);
-    if (players.length < 2) throw httpError(409, '至少需要两名有豆玩家');
+    const previousWinner = seatedPlayers(room).find((player) => player.userId === room.lastWinnerUserId && !room.spectators.has(player.userId));
+    const winnerControlsNextRound = previousWinner && previousWinner.roundDecision !== 'spectate';
+    const canStart = room.roundNumber === 0
+      ? room.hostUserId === userId
+      : winnerControlsNextRound ? previousWinner.userId === userId : room.hostUserId === userId;
+    if (!canStart) throw httpError(403, winnerControlsNextRound ? '只有上一局赢家可以开始下一局' : '只有房主可以开始下一局');
+    if (winnerControlsNextRound && (!previousWinner.ready || previousWinner.roundDecision !== 'next')) {
+      throw httpError(409, '上一局赢家请先选择下一局或观战');
+    }
+    const players = seatedPlayers(room).filter((player) => !room.spectators.has(player.userId) && player.ready && userBeans(this.user(player.userId)) > 0);
+    if (players.length < 2) throw httpError(409, '准备至少两名有豆玩家');
     if (players.length > MAX_SEATS) throw httpError(409, '房间人数超过上限');
     const ordered = players.sort((left, right) => left.seat - right.seat);
     const dealer = ordered.find((player) => player.userId === room.dealerUserId) ?? ordered[0];
@@ -335,9 +365,16 @@ export class RoomService {
     room.roundActedSeats = [];
     room.round = { id: randomUUID(), idempotency: false };
     const cards = shuffle(deck(), this.randomInteger);
+    for (const player of seatedPlayers(room)) {
+      const participating = players.includes(player);
+      player.participated = participating;
+      if (!participating) { player.inRound = false; player.waiting = true; }
+    }
     ordered.forEach((player, index) => {
       const user = this.user(player.userId);
       player.inRound = true;
+      player.waiting = false;
+      player.roundDecision = null;
       player.folded = false;
       player.allIn = false;
       player.seen = false;
@@ -537,9 +574,20 @@ export class RoomService {
     })));
     room.dealerUserId = winner?.userId ?? null;
     room.dealerSeat = winner?.seat ?? null;
+    room.lastWinnerUserId = winner?.userId ?? null;
     room.status = 'settled';
     setTurn(room, -1);
     room.lastResults = results;
+    for (const player of seatedPlayers(room)) {
+      player.inRound = false;
+      player.waiting = true;
+      if (player.participated) {
+        player.ready = false;
+        player.roundDecision = 'pending';
+      } else if (player.roundDecision === 'spectate') {
+        player.roundDecision = null;
+      }
+    }
     for (const result of results) {
       const user = this.user(result.userId);
       if (result.net > 0) user.wins = Number(user.wins ?? 0) + 1;
@@ -567,7 +615,8 @@ export class RoomService {
   addMessage(roomId, userId, text, { now } = {}) {
     const room = this.room(roomId);
     const player = seatedPlayers(room).find((candidate) => candidate.userId === userId);
-    if (!player || room.spectators.has(userId)) throw httpError(403, '观战者只能读取聊天');
+    const viewOnly = player?.roundDecision === 'spectate';
+    if (!player || room.spectators.has(userId) || viewOnly) throw httpError(403, '观战视角只能读取聊天');
     const body = String(text ?? '').trim();
     if (!body || [...body].length > 120) throw httpError(400, '消息长度需为 1-120 个字符');
     const createdAtMs = nowMs(now);
@@ -598,7 +647,8 @@ export class RoomService {
 
   eventsSince(roomId, userId, after = 0) {
     const room = this.room(roomId);
-    const spectator = room.spectators.has(userId);
+    const own = seatedPlayers(room).find((player) => player.userId === userId);
+    const spectator = room.spectators.has(userId) || Boolean(own && !own.inRound && own.roundDecision === 'spectate');
     return room.events
       .filter((event) => event.id > Number(after))
       .filter((event) => event.audience === 'room' || event.audience === `user:${userId}`)

@@ -18,3 +18,29 @@ dialog{max-width:none;padding:0;border:0;background:transparent;color:var(--ink)
 @keyframes empty-seat-glow{50%{border-color:rgba(125,214,160,.72);box-shadow:0 0 19px rgba(80,191,127,.28)}}@keyframes seat-slide-in{from{transform:translateY(-18px);opacity:0}to{transform:translateY(0);opacity:1}}@keyframes seat-edge-flash{0%,100%{box-shadow:none}45%{border-color:#d8c271;box-shadow:0 0 16px rgba(230,197,91,.7)}}@keyframes entry-chip-drop{from{transform:translateY(-42px);opacity:0}70%{transform:translateY(3px);opacity:1}to{transform:translateY(0);opacity:1}}@keyframes chip-bounce{0%{transform:translate(-50%,-7px)}65%{transform:translate(-50%,2px)}100%{transform:translate(-50%,0)}}@keyframes all-in-push{to{transform:translate(-50%,16px) scale(1.12)}}@keyframes chip-flight{0%{transform:translate(var(--from-x),var(--from-y)) scale(.9)}70%{transform:translate(var(--to-x),var(--to-y)) scale(1.06)}86%{transform:translate(var(--to-x),calc(var(--to-y) - 5px)) scale(.98)}100%{transform:translate(var(--to-x),var(--to-y)) scale(1);opacity:0}}@keyframes fold-to-muck{0%{transform:translate(var(--from-x),var(--from-y)) rotate(0);opacity:1}75%{transform:translate(var(--to-x),calc(var(--to-y) - 18px)) rotate(18deg);opacity:1}100%{transform:translate(var(--to-x),var(--to-y)) rotate(25deg);opacity:0}}@keyframes action-toast{0%{transform:translate(-50%,-25%);opacity:0}30%{transform:translate(-50%,-55%);opacity:1}100%{transform:translate(-50%,-90%);opacity:0}}@keyframes check-flash{50%{border-color:#8fe0ae;box-shadow:0 0 13px rgba(107,221,152,.55)}}@keyframes settlement-strip{0%,100%{transform:translateY(8px);opacity:0}10%,82%{transform:translateY(0);opacity:1}}@keyframes winner-double-flash{0%,100%{transform:translate(-50%,-50%) scale(1)}18%,55%{transform:translate(-50%,-50%) scale(1.055);filter:brightness(1.25)}36%,75%{transform:translate(-50%,-50%) scale(1);filter:brightness(1)}}@keyframes loser-shake{0%,100%{transform:translate(-50%,-50%)}25%{transform:translate(calc(-50% - 5px),-50%)}65%{transform:translate(calc(-50% + 5px),-50%)}}
 body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="disabled"] .table-effects-layer>*{display:none}body[data-motion="disabled"] .winner-seat,body[data-motion="disabled"] .loser-animating{animation:none}
 @media(max-width:620px){.community-cards{gap:2px;min-height:48px}.community-cards .poker-card{width:29px}.empty-seat{width:62px;font-size:8px}.empty-seat-glow{width:46px;height:25px}.player-avatar{width:23px;height:23px;font-size:10px}.settlement-strip{right:5%;bottom:100px;left:5%;font-size:10px}.bet-stack{top:69%;transform:translate(-50%,0)}}
+
+/* Reference-sized desktop stage: keep the table as the primary surface. */
+@media(min-width:801px){
+  .table-layout{display:grid;grid-template-columns:190px minmax(0,1fr) 220px;grid-template-rows:auto auto;grid-template-areas:"round felt chat" "facts facts facts";min-height:0;overflow:visible}
+  .table-column{grid-area:felt;position:relative;min-width:0}
+  .felt{width:100%;margin:22px auto 0;aspect-ratio:1.65}
+  .felt-center{top:33%}
+  .action-panel{position:absolute;right:auto;bottom:0;left:50%;z-index:12;width:min(92%,560px);margin:0;transform:translateX(-50%)}
+  .player-seat.self{top:67%!important}
+  .round-panel{grid-area:round;border-right:1px solid #303a34}
+  .chat-panel{grid-area:chat;border-left:1px solid #303a34}
+  .round-panel,.chat-panel{display:flex;min-height:0;flex-direction:column}
+  .round-feed,.chat-messages{height:auto;min-height:0;flex:1}
+  .table-facts{grid-area:facts}
+}
+
+@media(max-width:800px){
+  .table-column{position:relative}
+  .action-panel{position:static;right:auto;bottom:auto;left:auto;width:100%;margin:0 0 10px;transform:none}
+}
+
+.decision-panel{width:min(92vw,480px);padding:25px 28px}
+.decision-heading{text-align:center}.decision-heading>span{color:var(--gold);font-size:10px;font-weight:800}.decision-heading h2{margin:5px 0 8px;font-size:21px}.decision-heading p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.decision-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:20px}.decision-actions button{width:100%;min-width:0}
+.settlement-results{display:grid;gap:0;margin-top:16px;border-top:1px solid var(--line)}.settlement-results>div{display:flex;min-height:34px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);font-size:11px}.settlement-results .positive{color:#77d79f}.settlement-results .negative{color:#e98e87}
+@media(max-width:480px){.decision-panel{padding:22px 16px}.decision-actions{grid-template-columns:1fr}.decision-actions button{min-height:42px}}

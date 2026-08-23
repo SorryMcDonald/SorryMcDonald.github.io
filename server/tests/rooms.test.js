@@ -45,6 +45,8 @@ describe('room directory and departure', () => {
     const second = await register(app, 'clock-b@example.com', '时钟乙');
     const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: first.cookie }, payload: {} })).json().room;
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: second.cookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: first.cookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: second.cookie }, payload: { ready: true } });
     const started = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: first.cookie }, payload: {} });
     const startedRoom = started.json().room;
     const current = startedRoom.players.find((player) => player.seat === startedRoom.currentTurn);
@@ -158,6 +160,7 @@ describe('room directory and departure', () => {
 
     expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, payload: { text: '未登录' } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: outsider.cookie }, payload: { text: '房外发言' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: owner.cookie }, payload: { ready:true } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/messages`, headers: { cookie: owner.cookie }, payload: { text: '' } })).statusCode).toBe(400);
 
     let now = 10_000;
@@ -187,6 +190,8 @@ describe('room directory and departure', () => {
     const second = await register(app, 'leave-b@example.com', '留桌乙');
     const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: first.cookie }, payload: {} })).json().room;
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: second.cookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: first.cookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: second.cookie }, payload: { ready: true } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: first.cookie }, payload: {} });
 
     const left = await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/leave`, headers: { cookie: first.cookie }, payload: {} });
@@ -214,11 +219,105 @@ function startedService(playerCount = 2) {
   const service = new RoomService({ store });
   const room = service.createRoom('user-0', { ante: 10 });
   for (let index = 1; index < playerCount; index += 1) service.joinRoom(room.id, `user-${index}`);
+  for (let index = 0; index < playerCount; index += 1) service.setReady(room.id, `user-${index}`, true);
   service.startNextRound(room.id, 'user-0');
   return { service, store, room };
 }
 
 describe('RoomService approved game state machine', () => {
+  it('requires ready players before a round and keeps unready seats view-only', () => {
+    const store = gameStore(3);
+    const service = new RoomService({ store });
+    const room = service.createRoom('user-0', { allowSpectators:true });
+    service.joinRoom(room.id, 'user-1', 1);
+    service.joinRoom(room.id, 'user-2', 2);
+    service.setReady(room.id, 'user-0', true);
+    service.setReady(room.id, 'user-1', true);
+    expect(() => service.startNextRound(room.id, 'user-0')).not.toThrow();
+    const waiting = [...room.players.values()].find((player) => player.userId === 'user-2');
+    expect(waiting).toMatchObject({ ready:false, participated:false, inRound:false, waiting:true, left:false });
+    expect(service.snapshot(room.id, 'user-2').preparation).toMatchObject({ required:true, status:'pending', viewOnly:true });
+  });
+
+  it('requires two ready players and exposes settlement decisions before the next round', () => {
+    const store = gameStore(2);
+    const service = new RoomService({ store });
+    const room = service.createRoom('user-0', { allowSpectators:true });
+    service.joinRoom(room.id, 'user-1', 1);
+    service.setReady(room.id, 'user-0', true);
+    expect(() => service.startNextRound(room.id, 'user-0')).toThrow(/准备至少两名/);
+    service.setReady(room.id, 'user-1', true);
+    service.startNextRound(room.id, 'user-0');
+    const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    service.action(room.id, actor.userId, { type:'fold', actionSeq:actor.actionSeq + 1 });
+    expect(room.status).toBe('settled');
+    const winnerId = room.lastWinnerUserId;
+    expect(winnerId).toBeTruthy();
+    expect(service.snapshot(room.id, winnerId).settlement).toMatchObject({ required:true, decision:'pending', isWinner:true });
+    expect(() => service.startNextRound(room.id, winnerId)).toThrow(/先选择下一局或观战/);
+    service.setReady(room.id, winnerId, true);
+    service.setReady(room.id, winnerId === 'user-0' ? 'user-1' : 'user-0', true);
+    expect(() => service.startNextRound(room.id, winnerId)).not.toThrow();
+  });
+
+  it('keeps an observer seated and reserves next-round authority for the previous winner', () => {
+    const store = gameStore(3);
+    const service = new RoomService({ store });
+    const room = service.createRoom('user-0', { allowSpectators:true });
+    service.joinRoom(room.id, 'user-1', 1);
+    service.joinRoom(room.id, 'user-2', 2);
+    for (const userId of ['user-0', 'user-1', 'user-2']) service.setReady(room.id, userId, true);
+    service.startNextRound(room.id, 'user-0');
+    while (room.status === 'betting') {
+      const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+      service.action(room.id, actor.userId, { type:'fold', actionSeq:actor.actionSeq + 1 });
+    }
+
+    const winnerId = room.lastWinnerUserId;
+    const hostId = room.hostUserId;
+    expect(winnerId).not.toBe(hostId);
+    for (const userId of ['user-0', 'user-1', 'user-2'].filter((id) => id !== winnerId)) service.setReady(room.id, userId, true);
+    expect(() => service.startNextRound(room.id, winnerId)).toThrow(/先选择下一局或观战/);
+    service.setReady(room.id, winnerId, true);
+    expect(() => service.startNextRound(room.id, hostId)).toThrow(/上一局赢家/);
+
+    service.setReady(room.id, winnerId, false, { decision:'spectate' });
+    const observer = [...room.players.values()].find((player) => player.userId === winnerId);
+    expect(observer).toMatchObject({ left:false, ready:false, roundDecision:'spectate', inRound:false });
+    expect(service.snapshot(room.id, winnerId)).toMatchObject({
+      isSpectator:false,
+      settlement:{ required:true, decision:'spectate', isWinner:true }
+    });
+    expect(() => service.addMessage(room.id, winnerId, '绕过前端发言')).toThrow(/观战|只读/);
+
+    service.startNextRound(room.id, hostId);
+    expect(observer.participated).toBe(false);
+    while (room.status === 'betting') {
+      const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+      service.action(room.id, actor.userId, { type:'fold', actionSeq:actor.actionSeq + 1 });
+    }
+    expect(service.snapshot(room.id, winnerId).preparation).toMatchObject({
+      required:true,
+      status:'pending',
+      viewOnly:true
+    });
+  });
+
+  it('allows a settled participant to enter spectator mode without taking the next seat', () => {
+    const store = gameStore(2);
+    const service = new RoomService({ store });
+    const room = service.createRoom('user-0', { allowSpectators:true });
+    service.joinRoom(room.id, 'user-1', 1);
+    service.setReady(room.id, 'user-0', true);
+    service.setReady(room.id, 'user-1', true);
+    service.startNextRound(room.id, 'user-0');
+    const actor = [...room.players.values()].find((player) => player.seat === room.currentTurn);
+    service.action(room.id, actor.userId, { type:'fold', actionSeq:actor.actionSeq + 1 });
+    service.setSpectating(room.id, actor.userId, true);
+    expect(room.spectators.has(actor.userId)).toBe(true);
+    expect([...room.players.values()].find((player) => player.userId === actor.userId).left).toBe(true);
+  });
+
   it('validates room codes and antes and retries generated code collisions', () => {
     const store = gameStore(4);
     const generatedCodes = [100000, 100000, 550000];

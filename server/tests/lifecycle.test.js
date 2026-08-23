@@ -43,6 +43,7 @@ function fixture(playerCount = 2) {
   const service = new RoomService({ store });
   const room = service.createRoom('user-0');
   for (let index = 1; index < playerCount; index += 1) service.joinRoom(room.id, `user-${index}`);
+  for (let index = 0; index < playerCount; index += 1) service.setReady(room.id, `user-${index}`, true);
   return { service, store, room };
 }
 

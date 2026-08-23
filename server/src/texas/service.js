@@ -25,6 +25,7 @@ function appendEvent(room, eventType, payload = {}) {
 }
 
 function activePlayers(room) { return [...room.players.values()].filter((player) => !player.left && !player.spectating); }
+function readyPlayers(room) { return activePlayers(room).filter((player) => player.ready && numeric(player.stack) > 0); }
 function handPlayers(room) { return [...room.players.values()].filter((player) => player.inHand); }
 function contenders(room) { return handPlayers(room).filter((player) => !player.folded); }
 function actionable(room) { return contenders(room).filter((player) => !player.allIn && !player.pendingLeave); }
@@ -135,7 +136,7 @@ export class TexasService {
       smallBlind, bigBlind, minBuyIn, maxBuyIn, maxPlayers, dealerSeat:null, currentTurn:-1, currentBet:0, minRaise:bigBlind,
       pot:0, pots:[], board:[], deck:[], handNumber:0, hand:null, players:new Map(), spectators:new Set(),
       events:[], eventSeq:0, version:0, processedActions:[], pendingLedger:[], pendingClientActions:[],
-      messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null,
+      messages:[], chatLastAt:new Map(), turnStartedAt:null, turnDeadlineAt:null, lastWinnerUserId:null,
       createdAt:this.timestamp(), updatedAt:this.timestamp()
     };
     this.rooms.set(id, room);
@@ -164,7 +165,7 @@ export class TexasService {
     const requested = Number(input.seat);
     const seat = Number.isInteger(requested) && requested >= 0 && requested < room.maxPlayers && !used.has(requested)
       ? requested : [...Array(room.maxPlayers).keys()].find((value) => !used.has(value));
-    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:ACTIVE_STREETS.has(room.status), folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false };
+    const player = { id:randomUUID(), userId, nickname:user.nickname, seat, stack:buyIn, buyIn, inHand:false, waiting:true, ready:false, participated:false, roundDecision:null, folded:false, allIn:false, acted:false, canRaise:true, streetBet:0, totalContribution:0, actionSeq:0, lastAction:null, holeCards:[], evaluation:null, pendingLeave:false, left:false, spectating:false };
     user.beans = userBeans(user) - buyIn;
     room.players.set(player.id, player);
     room.spectators.delete(userId);
@@ -173,11 +174,27 @@ export class TexasService {
     return this.touch(room);
   }
 
+  setReady(roomId, userId, ready = true, { decision } = {}) {
+    const room = this.room(roomId);
+    const player = activePlayers(room).find((value) => value.userId === userId);
+    if (!player) throw httpError(403, '观战者不能准备');
+    if (player.inHand && ACTIVE_STREETS.has(room.status)) throw httpError(409, '当前手牌尚未结束');
+    if (room.status !== 'waiting' && room.status !== 'settled' && player.participated) throw httpError(409, '请等待本手结算');
+    if (decision !== undefined && decision !== 'spectate') throw httpError(400, '无效的牌局选择');
+    player.ready = decision === 'spectate' ? false : Boolean(ready);
+    if (decision === 'spectate') player.roundDecision = 'spectate';
+    else if (player.participated && room.status === 'settled') player.roundDecision = player.ready ? 'next' : 'pending';
+    else if (player.ready) player.roundDecision = null;
+    player.waiting = !player.inHand;
+    appendEvent(room, 'texas_player_ready', { userId, ready:player.ready, decision:player.roundDecision, handNumber:room.handNumber });
+    return this.touch(room);
+  }
+
   setSpectating(roomId, userId, enabled = true) {
     const room = this.room(roomId);
     if (enabled && room.status === 'closed') throw httpError(409, '房间已关闭');
-    if (enabled && !room.allowSpectators) throw httpError(403, '房主未开启观战');
     const player = activePlayers(room).find((value) => value.userId === userId);
+    if (enabled && !room.allowSpectators && !player) throw httpError(403, '房主未开启观战');
     if (enabled && player) {
       if (player.inHand && ACTIVE_STREETS.has(room.status)) throw httpError(409, '当前手牌中不能切换观战');
       cashOut(room, player, this.user(userId), 'spectate');
@@ -215,16 +232,27 @@ export class TexasService {
 
   startHand(roomId, userId) {
     const room = this.room(roomId);
-    if (room.hostUserId !== userId) throw httpError(403, '只有房主可以开始下一手');
+    const previousWinner = activePlayers(room).find((player) => player.userId === room.lastWinnerUserId);
+    const winnerControlsNextHand = previousWinner && previousWinner.roundDecision !== 'spectate';
+    const canStart = room.handNumber === 0
+      ? room.hostUserId === userId
+      : winnerControlsNextHand ? previousWinner.userId === userId : room.hostUserId === userId;
+    if (!canStart) throw httpError(403, winnerControlsNextHand ? '只有上一手赢家可以开始下一手' : '只有房主可以开始下一手');
+    if (winnerControlsNextHand && (!previousWinner.ready || previousWinner.roundDecision !== 'next')) {
+      throw httpError(409, '上一手赢家请先选择下一手或观战');
+    }
     if (!['waiting','settled'].includes(room.status)) throw httpError(409, '当前不能开始下一手');
-    const players = activePlayers(room).filter((player) => player.stack > 0);
-    if (players.length < 2) throw httpError(409, '至少需要两名有筹码玩家');
+    const players = readyPlayers(room);
+    if (players.length < 2) throw httpError(409, '准备至少两名有筹码玩家');
     room.dealerSeat = room.dealerSeat === null ? players.sort((a,b) => a.seat-b.seat)[0].seat : nextSeat(players, room.dealerSeat, () => true);
     room.handNumber += 1;
     room.hand = { id:randomUUID(), number:room.handNumber, startedAt:new Date().toISOString() };
     room.status = 'preflop'; room.board = []; room.deck = shuffledDeck(); room.pot = 0; room.pots = []; room.currentBet = 0; room.minRaise = room.bigBlind;
     for (const player of activePlayers(room)) {
-      player.inHand = player.stack > 0; player.waiting = player.stack <= 0; player.folded = false; player.allIn = false;
+      const participating = players.includes(player);
+      player.inHand = participating; player.waiting = !participating; player.folded = false; player.allIn = false;
+      player.participated = participating;
+      if (participating) player.roundDecision = null;
       player.acted = false; player.canRaise = true; player.streetBet = 0; player.totalContribution = 0; player.actionSeq = 0;
       player.lastAction = null; player.holeCards = []; player.evaluation = null; player.pendingLeave = false;
     }
@@ -364,9 +392,21 @@ export class TexasService {
       else if (net < 0) user.losses = numeric(user.losses) + 1;
       results.push({ playerId:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, payout, net, folded:player.folded, holeCards:player.holeCards, handType:player.evaluation?.name ?? null, bestCards:player.evaluation?.cards ?? [] });
     }
+    const winner = results.slice().sort((left, right) => Number(right.payout) - Number(left.payout) || Number(right.net) - Number(left.net))[0];
+    room.lastWinnerUserId = winner?.userId ?? null;
     room.status = 'settled'; room.currentTurn = -1; room.currentBet = 0; room.pot = 0;
     room.turnStartedAt = null; room.turnDeadlineAt = null;
     room.hand.settledAt = new Date().toISOString(); room.hand.results = results; room.hand.uncontested = uncontested;
+    for (const player of activePlayers(room)) {
+      player.inHand = false;
+      player.waiting = true;
+      if (player.participated) {
+        player.ready = false;
+        player.roundDecision = 'pending';
+      } else if (player.roundDecision === 'spectate') {
+        player.roundDecision = null;
+      }
+    }
     appendEvent(room, 'texas_hand_settled', { handId:room.hand.id, board:room.board, pots, players:results, uncontested });
     for (const player of [...room.players.values()].filter((value) => value.pendingLeave)) cashOut(room, player, this.user(player.userId), 'after_hand');
     return room;
@@ -398,7 +438,8 @@ export class TexasService {
   addMessage(roomId, userId, text, { now = this.now() } = {}) {
     const room = this.room(roomId);
     const player = activePlayers(room).find((value) => value.userId === userId);
-    if (!player) throw httpError(403, '观战者只能查看聊天');
+    const viewOnly = player?.roundDecision === 'spectate';
+    if (!player || viewOnly) throw httpError(403, '观战视角只能查看聊天');
     const normalized = String(text ?? '').trim();
     if (!normalized) throw httpError(400, '消息不能为空');
     if (normalized.length > 120) throw httpError(400, '消息不能超过120个字符');
@@ -429,12 +470,14 @@ export class TexasService {
     const spectator = room.spectators.has(userId);
     const own = activePlayers(room).find((player) => player.userId === userId);
     if (!spectator && !own) throw httpError(403, '请先加入房间或申请观战');
+    const observerView = spectator || Boolean(own && !own.inHand && own.roundDecision === 'spectate');
     const settled = room.status === 'settled';
     const uncontested = settled && Boolean(room.hand?.uncontested);
     const players = activePlayers(room).map((player) => {
-      const showCards = player.userId === userId || (!uncontested && ((settled && !player.folded) || spectator));
+      const showCards = player.userId === userId || (!uncontested && ((settled && !player.folded) || observerView));
       const result = {
         id:player.id, userId:player.userId, nickname:player.nickname, seat:player.seat, stack:player.stack,
+        ready:Boolean(player.ready), participated:Boolean(player.participated), roundDecision:player.roundDecision ?? null,
         inHand:player.inHand, waiting:player.waiting, folded:player.folded, allIn:player.allIn, pendingLeave:player.pendingLeave,
         streetBet:player.streetBet, totalContribution:player.totalContribution, actionSeq:player.actionSeq, lastAction:player.lastAction,
       };
@@ -449,17 +492,26 @@ export class TexasService {
       isPublic:room.isPublic, allowSpectators:room.allowSpectators, spectatorCards:room.allowSpectators, isSpectator:spectator,
       smallBlind:room.smallBlind, bigBlind:room.bigBlind, minBuyIn:room.minBuyIn, maxBuyIn:room.maxBuyIn, maxPlayers:room.maxPlayers,
       dealerSeat:room.dealerSeat, currentTurn:room.currentTurn, currentBet:room.currentBet, minRaise:room.minRaise,
+      lastWinnerUserId:room.lastWinnerUserId ?? null,
       pot:settled ? room.pots.reduce((sum,pot) => sum+numeric(pot.amount),0) : room.pot,
       pots:room.pots, board:room.board, handNumber:room.handNumber, handId:room.hand?.id ?? null,
        turnStartedAt:room.turnStartedAt ?? null, turnDeadlineAt:room.turnDeadlineAt ?? null,
-       players, messages:(room.messages ?? []).map((message) => ({ ...message })), allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
+      players, messages:(room.messages ?? []).map((message) => ({ ...message })),
+      preparation:own && !own.participated ? { required:true, status:own.ready ? 'ready' : own.roundDecision === 'spectate' ? 'spectate' : 'pending', viewOnly:!own.inHand, ready:Boolean(own.ready) } : null,
+      settlement:room.status === 'settled' && own?.participated ? {
+        required:true, decision:own.roundDecision ?? 'pending', isWinner:own.userId === room.lastWinnerUserId,
+        winnerUserId:room.lastWinnerUserId ?? null, readyCount:readyPlayers(room).length,
+        players:(room.hand?.results ?? []).map((result) => ({ userId:result.userId, nickname:result.nickname, payout:result.payout, net:result.net }))
+      } : null,
+      allowedActions:own ? allowedActions(room, own) : { actions:[], toCall:0, minRaiseTo:0, maxRaiseTo:0 },
       recentEvents:room.events.slice(-30).map((event) => this.publicEvent(room, event, userId))
     };
   }
 
   publicEvent(room, event, userId) {
     if (event.eventType !== 'texas_hand_settled') return event;
-    const spectator = room.spectators.has(userId);
+    const own = activePlayers(room).find((player) => player.userId === userId);
+    const spectator = room.spectators.has(userId) || Boolean(own && !own.inHand && own.roundDecision === 'spectate');
     const uncontested = Boolean(event.payload.uncontested);
     return { ...event, payload:{ ...event.payload, players:event.payload.players.map((player) => {
       const showCards = player.userId === userId || (!uncontested && (!player.folded || spectator));

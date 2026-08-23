@@ -46,10 +46,7 @@
           <div class="toolbar-actions">
             <button id="createRoomButton" class="primary-button" type="button">创建房间</button>
             <button id="joinRoomButton" class="ghost-button" type="button">房号加入</button>
-            <button id="leaveRoomButton" class="danger-button" type="button" hidden>退出房间</button>
-            <button id="startNextButton" class="primary-button" type="button" hidden>开始下一局</button>
             <button id="observeButton" class="ghost-button" type="button" hidden>开启观战</button>
-            <button id="spectateButton" class="ghost-button" type="button" hidden>进入观战</button>
             <button id="refillButton" class="gold-button" type="button" hidden>领取补豆</button>
           </div>
         </div>
@@ -60,6 +57,9 @@
         </section>
 
         <div class="table-layout" id="tableLayout" hidden>
+          <section class="round-panel"><div class="panel-heading"><h2>牌局动态</h2><span>第 <b id="bettingRoundLabel">0</b> 轮</span></div><div id="roundFeed" class="round-feed" aria-live="polite"></div></section>
+
+          <div class="table-column">
           <div class="felt" id="felt">
             <div class="felt-center">
               <div class="pot-label">底池</div><div id="potValue" class="pot-value">0</div>
@@ -81,11 +81,9 @@
               <button id="revealButton" class="primary-button" type="button" hidden>亮出我的牌</button>
             </div>
           </section>
-
-          <div class="table-info">
-            <section class="round-panel"><div class="panel-heading"><h2>牌局动态</h2><span>第 <b id="bettingRoundLabel">0</b> 轮</span></div><div id="roundFeed" class="round-feed" aria-live="polite"></div></section>
-            <section class="chat-panel"><div class="panel-heading"><h2>房间聊天</h2><span id="chatModeLabel"></span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm"><input id="chatInput" maxlength="120" autocomplete="off" aria-label="房间聊天输入" placeholder="说点什么"><button id="chatSendButton" class="primary-button" type="submit">发送</button></form></section>
           </div>
+
+          <section class="chat-panel"><div class="panel-heading"><h2>房间聊天</h2><span id="chatModeLabel"></span></div><div id="chatMessages" class="chat-messages" aria-live="polite"></div><form id="chatForm"><input id="chatInput" maxlength="120" autocomplete="off" aria-label="房间聊天输入" placeholder="说点什么"><button id="chatSendButton" class="primary-button" type="submit">发送</button></form></section>
         </div>
       </section>
 
@@ -141,6 +139,9 @@
       <label class="setting-row"><span>比牌动效</span><select id="motionSelect"><option value="light">轻量</option><option value="cinematic">影视</option><option value="disabled">关闭</option></select></label>
     </form>
   </dialog>
+
+  <dialog id="preparationDialog" aria-labelledby="preparationTitle"><div class="modal-panel decision-panel"><div class="decision-heading"><span>入座选择</span><h2 id="preparationTitle">准备加入下一局</h2><p>未准备时保留当前席位，并以观战视角等待下一局。</p></div><div class="decision-actions"><button id="prepReadyButton" class="primary-button" type="button">准备</button><button id="prepSpectateButton" class="ghost-button" type="button">观战</button><button id="prepLeaveButton" class="danger-button" type="button">退出房间</button></div></div></dialog>
+  <dialog id="settlementDialog" aria-labelledby="settlementTitle"><div class="modal-panel decision-panel settlement-panel"><div class="decision-heading"><span>本局结算</span><h2 id="settlementTitle">选择下一步</h2><p id="settlementSummary">本局已经结束</p></div><div id="settlementResults" class="settlement-results"></div><div class="decision-actions"><button id="settlementNextButton" class="primary-button" type="button">下一局</button><button id="settlementSpectateButton" class="ghost-button" type="button">观战</button><button id="settlementLeaveButton" class="danger-button" type="button">退出房间</button></div></div></dialog>
 
   <script type="module" src="/app.js"></script>
 </body>

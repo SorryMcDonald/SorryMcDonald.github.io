@@ -6,6 +6,13 @@ async function register(app,email,nickname) {
   return { cookie:response.headers['set-cookie'],user:response.json().user };
 }
 
+async function prepare(app, roomId, ...cookies) {
+  for (const cookie of cookies) {
+    const response = await app.inject({ method:'POST', url:`/api/texas/rooms/${roomId}/ready`, headers:{ cookie }, payload:{ ready:true } });
+    expect(response.statusCode).toBe(200);
+  }
+}
+
 describe('Texas API contract',() => {
   it('serializes chat mutations and lets spectators read but not write', async () => {
     const app=await buildApp({ logger:false });
@@ -56,6 +63,7 @@ describe('Texas API contract',() => {
     const guest=await register(app,'texas-timer-guest@example.com','德州计时客人');
     const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
     await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{} });
+    await prepare(app, room.id, host.cookie, guest.cookie);
     expect((await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} })).statusCode).toBe(200);
     expect(app.texasLifecycle.turnTimers.has(room.id)).toBe(true);
     await app.close();
@@ -67,6 +75,7 @@ describe('Texas API contract',() => {
     const guest=await register(app,'texas-postcommit-guest@example.com','提交后客人');
     const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:host.cookie },payload:{} })).json().room;
     await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{} });
+    await prepare(app, room.id, host.cookie, guest.cookie);
     app.gateway.broadcastRoom=() => { throw new Error('socket closed during broadcast'); };
 
     const response=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} });
@@ -85,6 +94,7 @@ describe('Texas API contract',() => {
     const room=created.json().room;
     const joined=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:guest.cookie },payload:{ buyIn:1000 } });
     expect(joined.statusCode).toBe(200);
+    await prepare(app, room.id, host.cookie, guest.cookie);
     const started=await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:host.cookie },payload:{} });
     expect(started.statusCode).toBe(200);
     const hostView=started.json().room;
@@ -102,6 +112,7 @@ describe('Texas API contract',() => {
     const second=await register(app,'texas-action-b@example.com','行动乙');
     const room=(await app.inject({ method:'POST',url:'/api/texas/rooms',headers:{ cookie:first.cookie },payload:{} })).json().room;
     await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/join`,headers:{ cookie:second.cookie },payload:{} });
+    await prepare(app, room.id, first.cookie, second.cookie);
     const state=(await app.inject({ method:'POST',url:`/api/texas/rooms/${room.id}/start`,headers:{ cookie:first.cookie },payload:{} })).json().room;
     const actor=state.players.find((player) => player.seat===state.currentTurn);
     const cookie=actor.userId===first.user.id?first.cookie:second.cookie;

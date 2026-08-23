@@ -86,6 +86,8 @@ describe('WebSocket visibility', () => {
     const service = new RoomService({ store });
     const room = service.createRoom('owner', { allowSpectators: true });
     service.joinRoom(room.id, 'other');
+    service.setReady(room.id, 'owner', true);
+    service.setReady(room.id, 'other', true);
     service.startNextRound(room.id, 'owner');
     room.spectators.add('observer');
 
@@ -107,8 +109,10 @@ describe('WebSocket visibility', () => {
     app.gateway.addRoomSocket(room.id, observer, { userId: second.json().user.id, spectator: false });
     app.gateway.addGlobalSocket(global);
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: secondCookie }, payload: { seat: 1 } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: firstCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: secondCookie }, payload: { ready: true } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
-    expect(observer.sent.map((message) => message.event?.eventType)).toEqual(['player_joined', 'round_started']);
+    expect(observer.sent.map((message) => message.event?.eventType)).toEqual(['player_joined', 'player_ready', 'player_ready', 'round_started']);
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(global.sent.filter((message) => message.type === 'global_banner' && message.banner?.queueName === 'economy')).toHaveLength(0);

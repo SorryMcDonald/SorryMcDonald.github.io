@@ -18,6 +18,8 @@ describe('room economy and round state', () => {
       await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/join`, headers: { cookie: second.cookie }, payload: { seat: 1 } });
       app.auth.store.users.get(first.id).beans = 10;
       app.auth.store.users.get(second.id).beans = 10;
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/ready`, headers: { cookie: first.cookie }, payload: { ready: true } });
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/ready`, headers: { cookie: second.cookie }, payload: { ready: true } });
       const started = await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/start-next`, headers: { cookie: first.cookie } });
       expect(started.statusCode).toBe(200);
       expect(started.json().room.status).toBe('settled');
@@ -28,6 +30,8 @@ describe('room economy and round state', () => {
       const refill = await app.inject({ method: 'POST', url: '/api/me/refill', headers: { cookie: loser.cookie }, payload: { confirmationText: '黄总是大帅比' } });
       expect(refill.statusCode).toBe(200);
       expect(refill.json().user).toMatchObject({ id: loser.id, beans: 100000 });
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/ready`, headers: { cookie: first.cookie }, payload: { ready: true } });
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/ready`, headers: { cookie: second.cookie }, payload: { ready: true } });
       const next = await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/start-next`, headers: { cookie: dealer.cookie }, payload: {} });
       expect(next.statusCode).toBe(200);
       expect(next.json().room.status).toBe('betting');

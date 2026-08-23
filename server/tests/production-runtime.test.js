@@ -72,6 +72,8 @@ describe('production runtime persistence', () => {
     const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: firstCookie }, payload: {} })).json().room;
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: secondCookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: firstCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: secondCookie }, payload: { ready: true } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
 
     expect(app.lifecycle.turnTimers.has(room.id)).toBe(true);
@@ -110,5 +112,14 @@ describe('production runtime persistence', () => {
     expect(restored.messages).toEqual([]);
     expect(restored.chatLastAt).toBeInstanceOf(Map);
     expect(restored.events.some((event) => ['chat_message', 'texas_chat_message'].includes(event.eventType))).toBe(false);
+  });
+
+  it('infers settled Zhajinhua participants from legacy result state', () => {
+    const restored = deserializeRoom({
+      id:'legacy-room', status:'settled', lastWinnerUserId:'legacy-winner',
+      players:[['legacy-player', { id:'legacy-player', userId:'legacy-winner', inRound:false }]],
+      spectators:[], events:[], lastResults:[{ userId:'legacy-winner', net:10 }]
+    });
+    expect(restored.players.get('legacy-player')).toMatchObject({ participated:true, roundDecision:null, ready:false });
   });
 });

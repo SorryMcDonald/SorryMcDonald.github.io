@@ -96,13 +96,18 @@ describe('leaderboards and refill', () => {
     const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: firstCookie }, payload: { ante: 1 } })).json().room;
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: secondCookie }, payload: {} });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: third.headers['set-cookie'] }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: firstCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: secondCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: third.headers['set-cookie'] }, payload: { ready: true } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
 
     const initial = app.rooms.room(room.id);
     const firstPlayer = [...initial.players.values()].find((player) => player.userId === first.json().user.id);
     const secondPlayer = [...initial.players.values()].find((player) => player.userId === second.json().user.id);
-    firstPlayer.cards = [{ rank: 2, suit: 'S' }, { rank: 3, suit: 'H' }, { rank: 5, suit: 'D' }];
+    const thirdPlayer = [...initial.players.values()].find((player) => player.userId === third.json().user.id);
+    firstPlayer.cards = [{ rank: 2, suit: 'S' }, { rank: 4, suit: 'H' }, { rank: 7, suit: 'D' }];
     secondPlayer.cards = [{ rank: 14, suit: 'S' }, { rank: 14, suit: 'H' }, { rank: 14, suit: 'D' }];
+    thirdPlayer.cards = [{ rank: 3, suit: 'S' }, { rank: 6, suit: 'H' }, { rank: 9, suit: 'D' }];
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
     expect(firstUser.refill_generation).toBe(1);
@@ -113,10 +118,12 @@ describe('leaderboards and refill', () => {
     firstUser.beans = 100000;
 
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'all_in', actionSeq: 1 } });
-    const settled = app.rooms.room(room.id);
-    settled.dealerUserId = first.json().user.id;
-    settled.dealerSeat = firstPlayer.seat;
-    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: firstCookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: firstCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: secondCookie }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: third.headers['set-cookie'] }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: secondCookie }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: secondCookie }, payload: { action: 'call', actionSeq: 1 } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: third.headers['set-cookie'] }, payload: { action: 'call', actionSeq: 1 } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/actions`, headers: { cookie: firstCookie }, payload: { action: 'all_in', actionSeq: 1 } });
 
     expect(firstUser.refill_generation).toBe(2);
@@ -136,6 +143,8 @@ describe('leaderboards and refill', () => {
     const service = new RoomService({ store });
     const room = service.createRoom('a');
     service.joinRoom(room.id, 'b');
+    service.setReady(room.id, 'a', true);
+    service.setReady(room.id, 'b', true);
     service.startNextRound(room.id, 'a');
     service.action(room.id, 'a', { action: 'fold', actionSeq: 1 });
 
@@ -253,9 +262,16 @@ describe('leaderboards and refill', () => {
     const room = (await app.inject({ method: 'POST', url: '/api/rooms', headers: { cookie: first.headers['set-cookie'] }, payload: { ante: 1 } })).json().room;
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: second.headers['set-cookie'] }, payload: {} });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/join`, headers: { cookie: third.headers['set-cookie'] }, payload: {} });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: first.headers['set-cookie'] }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: second.headers['set-cookie'] }, payload: { ready: true } });
+    await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/ready`, headers: { cookie: third.headers['set-cookie'] }, payload: { ready: true } });
     await app.inject({ method: 'POST', url: `/api/rooms/${room.id}/start-next`, headers: { cookie: first.headers['set-cookie'] }, payload: {} });
     const current = [...app.rooms.room(room.id).players.values()].find((player) => player.seat === app.rooms.room(room.id).currentTurn);
-    const currentCookie = current.userId === firstUser.id ? first.headers['set-cookie'] : second.headers['set-cookie'];
+    const currentCookie = new Map([
+      [first.json().user.id, first.headers['set-cookie']],
+      [second.json().user.id, second.headers['set-cookie']],
+      [third.json().user.id, third.headers['set-cookie']]
+    ]).get(current.userId);
     const currentUser = app.auth.store.users.get(current.userId);
     currentUser.beans = 1;
     await app.listen({ host: '127.0.0.1', port: 0 });

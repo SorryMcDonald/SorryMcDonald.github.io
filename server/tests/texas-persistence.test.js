@@ -33,6 +33,16 @@ describe('Texas PostgreSQL persistence contract',() => {
     expect(JSON.stringify(serializeRoom(room))).not.toMatch(/临时聊天/);
   });
 
+  it('infers settled Texas participants from legacy hand results', () => {
+    const restored=deserializeRoom({
+      id:'legacy-texas', status:'settled', lastWinnerUserId:'legacy-winner',
+      hand:{ results:[{ userId:'legacy-winner', net:20 }] },
+      players:[['legacy-player',{ id:'legacy-player',userId:'legacy-winner',inHand:false }]],
+      spectators:[], events:[]
+    });
+    expect(restored.players.get('legacy-player')).toMatchObject({ participated:true, roundDecision:null, ready:false });
+  });
+
   it('does not write historical or incremental chat events to texas_actions', async () => {
     const users=new Map([['u1',{ id:'u1',nickname:'聊天过滤',beans:100000,wins:0,losses:0 }]]);
     const service=new TexasService({ store:{ users,banners:[] } });
@@ -76,6 +86,8 @@ describe('Texas PostgreSQL persistence contract',() => {
     const service=new TexasService({ store:{ users,banners:[] } });
     const room=service.createRoom('u1',{ buyIn:1000 });
     service.joinRoom(room.id,'u2',{ buyIn:1000 });
+    service.setReady(room.id,'u1',true);
+    service.setReady(room.id,'u2',true);
     service.startHand(room.id,'u1');
     const actor=[...room.players.values()].find((player) => player.seat===room.currentTurn);
     service.action(room.id,actor.userId,{ type:'fold',handId:room.hand.id,version:room.version,actionSeq:1,clientActionId:'jsonb-fold-action' });
@@ -134,6 +146,8 @@ describe('Texas PostgreSQL persistence contract',() => {
     const service=new TexasService({ store:{ users,banners:[] } });
     const room=service.createRoom('u1',{ buyIn:1000 });
     service.joinRoom(room.id,'u2',{ buyIn:1000 });
+    service.setReady(room.id,'u1',true);
+    service.setReady(room.id,'u2',true);
     service.startHand(room.id,'u1');
     const actor=[...room.players.values()].find((player) => player.seat===room.currentTurn);
     service.action(room.id,actor.userId,{ type:'fold',handId:room.hand.id,version:room.version,actionSeq:1,clientActionId:'settle-fold-action' });

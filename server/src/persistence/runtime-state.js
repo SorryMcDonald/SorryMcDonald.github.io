@@ -49,7 +49,16 @@ export function deserializeRoom(state) {
   if (!state || typeof state !== 'object' || !state.id) return null;
   return {
     ...state,
-    players: new Map(Array.isArray(state.players) ? state.players : []),
+    lastWinnerUserId: state.lastWinnerUserId ?? null,
+    players: new Map((Array.isArray(state.players) ? state.players : []).map(([id, player]) => [id, {
+      ...player,
+      ready:Boolean(player.ready),
+      participated:player.participated === undefined
+        ? Boolean(state.lastResults?.some((result) => result.userId === player.userId))
+        : Boolean(player.participated),
+      roundDecision:player.roundDecision ?? null,
+      waiting:player.waiting ?? !player.inRound
+    }])),
     spectators: new Set(Array.isArray(state.spectators) ? state.spectators : []),
     events: durableEvents(Array.isArray(state.events) ? state.events : []),
     messages: [],

@@ -22,10 +22,26 @@ describe('Texas browser client contract',() => {
     const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
     const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');
     const css=await readFile(new URL('../../public/dezhou.css',import.meta.url),'utf8');
-    for (const id of ['startButton','leaveButton','rebuyButton','refreshButton','seats']) expect(html).toContain(`id="${id}"`);
+    for (const id of ['rebuyButton','refreshButton','seats']) expect(html).toContain(`id="${id}"`);
     expect(js).toContain("sessionStorage.setItem('texas.roomId'");
     expect(js).toContain('function seatPosition');
     expect(css).toMatch(/@media\(max-width:620px\)/);
+  });
+
+  it('uses preparation and settlement decision dialogs instead of toolbar round controls', async () => {
+    const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
+    const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');
+    for (const id of ['preparationDialog','prepReadyButton','prepSpectateButton','prepLeaveButton','settlementDialog','settlementNextButton','settlementSpectateButton','settlementLeaveButton','settlementResults']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(js).toContain('/ready`');
+    expect(js).toContain('autoStart:true');
+    expect(js).toContain('preparation');
+    expect(js).toContain('settlement');
+    expect(js).toContain("body:{ ready:false,decision:'spectate',autoStart:true }");
+    expect(js).toMatch(/preparationDialog[\s\S]*?addEventListener\('cancel',[\s\S]*?preventDefault/);
+    expect(html).not.toMatch(/class="toolbar-actions"[^>]*>[\s\S]*?id="startButton"/);
+    expect(html).not.toMatch(/class="toolbar-actions"[^>]*>[\s\S]*?id="leaveButton"/);
   });
 
   it('treats permitted spectating as a single global-open-card mode',async() => {

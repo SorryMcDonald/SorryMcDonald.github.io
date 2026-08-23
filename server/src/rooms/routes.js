@@ -24,6 +24,18 @@ export function registerRoomRoutes(app, options = {}) {
     return { room: service.snapshot(room.id, request.user.id) };
   });
   app.post('/api/rooms/:roomId/join', { preHandler: requireUser }, async (request) => { await lifecycle.mutate(request.params.roomId, () => service.joinRoom(request.params.roomId, request.user.id, request.body?.seat), { affectedUserIds: [request.user.id] }); return { room: service.snapshot(request.params.roomId, request.user.id) }; });
+  app.post('/api/rooms/:roomId/ready', { preHandler: requireUser }, async (request) => { await lifecycle.mutate(request.params.roomId, () => {
+    const current=service.setReady(request.params.roomId, request.user.id, request.body?.ready ?? true, { decision:request.body?.decision });
+    if (request.body?.autoStart && ['waiting','settled'].includes(current.status)) {
+      const seated=[...current.players.values()].filter((player) => !player.left && !current.spectators.has(player.userId));
+      const ready=seated.filter((player) => player.ready && Number(service.user(player.userId).beans) > 0);
+      const winner=seated.find((player) => player.userId === current.lastWinnerUserId);
+      const winnerControls=winner && winner.roundDecision !== 'spectate';
+      const starter=current.roundNumber === 0 ? current.hostUserId : winnerControls ? winner.ready ? winner.userId : null : current.hostUserId;
+      if (starter && ready.length >= 2) service.startNextRound(current.id,starter,{ now:lifecycle.clock?.now?.() ?? Date.now() });
+    }
+    return current;
+  }, { affectedUserIds: [request.user.id] }); return { room: service.snapshot(request.params.roomId, request.user.id) }; });
   app.get('/api/rooms/:roomId', { preHandler: requireUser }, async (request) => {
     const room = service.room(request.params.roomId);
     const seated = [...room.players.values()].some((player) => player.userId === request.user.id && !player.left);

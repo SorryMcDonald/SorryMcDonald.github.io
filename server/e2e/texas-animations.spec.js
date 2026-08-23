@@ -18,6 +18,11 @@ async function roomView(context, roomId) {
   return (await response.json()).room;
 }
 
+async function prepare(context, roomId) {
+  const response = await context.request.post(`/api/texas/rooms/${roomId}/ready`, { data:{ ready:true } });
+  expect(response.status()).toBe(200);
+}
+
 async function openTrackedRoom(context, roomId) {
   await context.addInitScript((id) => {
     sessionStorage.setItem('texas.roomId', id);
@@ -113,6 +118,8 @@ test('live entry, betting, collection, checks, and showdown render as non-blocki
   await hostPage.setViewportSize({ width:1280, height:900 });
 
   await guestContext.request.post(`/api/texas/rooms/${room.id}/join`, { data:{ buyIn:1000 } });
+  await prepare(hostContext, room.id);
+  await prepare(guestContext, room.id);
   await expectEffect(hostPage, 'seat-entry');
   await expect(hostPage.locator('.empty-seat')).toHaveCount(4);
 
@@ -156,6 +163,7 @@ test('fold stays concealed, does not block the next actor, does not replay, and 
   const room = (await created.json()).room;
   await contexts[1].request.post(`/api/texas/rooms/${room.id}/join`, { data:{ buyIn:1000 } });
   await contexts[2].request.post(`/api/texas/rooms/${room.id}/join`, { data:{ buyIn:1000 } });
+  await Promise.all(contexts.map((context) => prepare(context, room.id)));
   await contexts[0].request.post(`/api/texas/rooms/${room.id}/start`, { data:{} });
   const pages = [];
   for (const context of contexts) pages.push(await openTrackedRoom(context, room.id));

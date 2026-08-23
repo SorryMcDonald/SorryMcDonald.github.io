@@ -293,6 +293,24 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   .modal-panel{padding:24px 18px}
 }
 
+.decision-panel{width:min(92vw,480px);padding:25px 28px}
+.decision-heading{text-align:center}
+.decision-heading>span{color:var(--gold);font-size:10px;font-weight:800}
+.decision-heading h2{margin:5px 0 8px;font-size:21px}
+.decision-heading p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.decision-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:20px}
+.decision-actions button{width:100%;min-width:0}
+.settlement-results{display:grid;gap:0;margin-top:16px;border-top:1px solid var(--line)}
+.settlement-results>div{display:flex;min-height:34px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);font-size:11px}
+.settlement-results .positive{color:#77d79f}
+.settlement-results .negative{color:#e98e87}
+
+@media(max-width:480px){
+  .decision-panel{padding:22px 16px}
+  .decision-actions{grid-template-columns:1fr}
+  .decision-actions button{min-height:42px}
+}
+
 @media(prefers-reduced-motion:reduce){
   *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
@@ -491,4 +509,21 @@ dialog::backdrop{background:rgba(4,10,7,.78)}
   .podium-card{min-height:62px;padding:8px}
   .leaderboard-head,.leader-row{grid-template-columns:minmax(0,1fr) 86px}
   .leaderboard-head span:nth-child(2),.leader-record{display:none}
+}
+
+@media(min-width:801px){
+  .table-layout{grid-template-columns:190px minmax(0,1fr) 220px;grid-template-rows:minmax(520px,1fr);grid-template-areas:"round table chat";min-height:calc(100vh - 172px);overflow:hidden}
+  .table-column{grid-area:table;position:relative;display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center}
+  .felt{grid-area:auto;top:-43px;width:calc(100% - 28px);aspect-ratio:1.65;margin:14px}
+  .action-panel{grid-area:auto;position:absolute;bottom:24px;left:50%;z-index:12;width:min(92%,560px);margin:0;transform:translateX(-50%)}
+  .player-seat.self{top:60%}
+  .round-panel,.chat-panel{display:flex;min-height:0;flex-direction:column}
+  .round-feed,.chat-messages{height:auto;min-height:0;flex:1}
+}
+
+@media(max-width:800px){
+  .table-layout{grid-template-areas:"table" "round" "chat";grid-template-rows:auto auto auto}
+  .table-column{grid-area:table;position:relative;min-width:0}
+  .felt{grid-area:auto}
+  .action-panel{grid-area:auto;position:static;right:auto;bottom:auto;left:auto;width:100%;margin:0 0 10px;transform:none}
 }

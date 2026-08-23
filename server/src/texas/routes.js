@@ -93,6 +93,21 @@ export function registerTexasRoutes(app, options = {}) {
     const room=await mutate(request.params.roomId,() => service.updateSettings(request.params.roomId,request.user.id,request.body ?? {}));
     return { room:service.snapshot(room.id,request.user.id) };
   });
+  app.post('/api/texas/rooms/:roomId/ready',{ preHandler:requireUser },async(request) => {
+    const room=await mutate(request.params.roomId,() => {
+      const current=service.setReady(request.params.roomId,request.user.id,request.body?.ready ?? true,{ decision:request.body?.decision });
+      if (request.body?.autoStart && ['waiting','settled'].includes(current.status)) {
+        const active=[...current.players.values()].filter((player) => !player.left && !player.spectating);
+        const ready=active.filter((player) => player.ready && Number(player.stack) > 0);
+        const winner=active.find((player) => player.userId === current.lastWinnerUserId);
+        const winnerControls=winner && winner.roundDecision !== 'spectate';
+        const starter=current.handNumber === 0 ? current.hostUserId : winnerControls ? winner.ready ? winner.userId : null : current.hostUserId;
+        if (starter && ready.length >= 2) service.startHand(current.id,starter);
+      }
+      return current;
+    });
+    return { room:service.snapshot(room.id,request.user.id) };
+  });
   app.post('/api/texas/rooms/:roomId/messages',{ preHandler:requireUser },async(request) => {
     const mutateMessage = () => service.addMessage(request.params.roomId,request.user.id,request.body?.text);
     const message = app.texasLifecycle

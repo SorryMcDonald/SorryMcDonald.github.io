@@ -49,6 +49,10 @@ async function createRoom(origin, accounts, options = {}) {
     const joined = await request(origin, `/api/rooms/${created.body.room.id}/join`, { method: 'POST', cookie: account.cookie, body: {} });
     expect(joined.status).toBe(200);
   }
+  for (const account of accounts) {
+    const prepared = await request(origin, `/api/rooms/${created.body.room.id}/ready`, { method: 'POST', cookie: account.cookie, body: { ready: true } });
+    expect(prepared.status).toBe(200);
+  }
   return created.body.room;
 }
 

@@ -243,15 +243,14 @@ function renderLobby() {
   $('roundStatus').textContent = '选择房间';
   $('createRoomButton').hidden = false;
   $('joinRoomButton').hidden = false;
-  $('leaveRoomButton').hidden = true;
-  $('startNextButton').hidden = true;
   $('observeButton').hidden = true;
-  $('spectateButton').hidden = true;
   $('actionPanel').hidden = true;
   $('players').replaceChildren();
   $('potValue').textContent = '0';
   $('compareNotice').textContent = '';
   $('roleLabel').textContent = '';
+  closeDecisionDialog($('preparationDialog'));
+  closeDecisionDialog($('settlementDialog'));
 }
 
 function renderRoomList(rooms) {
@@ -353,7 +352,8 @@ function renderMessages() {
 function renderActions() {
   const room = state.room;
   const player = localPlayer();
-  const spectator = room.isSpectator || !player;
+  const preparationReadonly = Boolean(room.preparation?.viewOnly && room.preparation.status !== 'ready');
+  const spectator = room.isSpectator || !player || preparationReadonly || (room.status === 'betting' && !player.inRound);
   const canAdvance = Boolean(!spectator && room.status === 'betting' && player.seat === room.currentTurn && !player.folded && !player.allIn);
   const multiplier = player?.seen ? 2 : 1;
   const callCost = Number(room.level || room.ante || 0) * multiplier;
@@ -371,6 +371,34 @@ function renderActions() {
   $('chatInput').placeholder = spectator ? '观战状态不能发言' : '说点什么';
 }
 
+function closeDecisionDialog(dialog) { if (dialog?.open) dialog.close(); }
+
+function renderDecisionDialogs() {
+  const room = state.room;
+  const preparation = room?.preparation;
+  const settlement = room?.settlement;
+  const preparationDialog = $('preparationDialog');
+  const settlementDialog = $('settlementDialog');
+  if (preparation?.required && preparation.status === 'pending') {
+    closeDecisionDialog(settlementDialog);
+    if (!preparationDialog.open) preparationDialog.showModal();
+  } else closeDecisionDialog(preparationDialog);
+  if (settlement?.required && settlement.decision === 'pending') {
+    closeDecisionDialog(preparationDialog);
+    const results = settlement.players ?? [];
+    const winner = results.find((result) => result.userId === settlement.winnerUserId);
+    $('settlementSummary').textContent = winner ? `${winner.nickname} 赢得本局，选择是否参加下一局` : '本局已经结束';
+    $('settlementResults').replaceChildren(...results.map((result) => {
+      const row = document.createElement('div');
+      const name = document.createElement('strong'); name.textContent = result.nickname;
+      const net = document.createElement('span'); net.textContent = `${Number(result.net ?? 0) >= 0 ? '+' : ''}${Number(result.net ?? 0).toLocaleString()} 豆`;
+      net.className = Number(result.net ?? 0) >= 0 ? 'positive' : 'negative';
+      row.append(name,net); return row;
+    }));
+    if (!settlementDialog.open) settlementDialog.showModal();
+  } else closeDecisionDialog(settlementDialog);
+}
+
 function renderRoom() {
   const room = state.room;
   if (!room) {
@@ -382,22 +410,20 @@ function renderRoom() {
   $('tableLayout').hidden = false;
   $('createRoomButton').hidden = true;
   $('joinRoomButton').hidden = true;
-  $('leaveRoomButton').hidden = false;
   $('roomCode').textContent = room.code;
   $('roundStatus').textContent = ROOM_STATUS_LABELS[room.status] || room.status;
   $('potValue').textContent = Number(room.pot || 0).toLocaleString();
   $('beansLabel').textContent = `${Number(state.user.beans || 0).toLocaleString()} 豆`;
   $('bettingRoundLabel').textContent = String(Number(room.bettingRound || 0) + (room.status === 'betting' ? 1 : 0));
   $('roleLabel').textContent = room.isSpectator ? '观战视角 · 全局明牌' : room.dealerUserId === state.user.id ? '本局庄家' : '';
-  $('startNextButton').hidden = !(room.status === 'waiting' || room.status === 'settled') || Boolean(room.dealerUserId && room.dealerUserId !== state.user.id);
   $('observeButton').hidden = room.hostUserId !== state.user.id;
   $('observeButton').textContent = room.allowSpectators ? '关闭观战' : '开启观战';
-  $('spectateButton').hidden = !room.allowSpectators || room.isSpectator;
   $('players').dataset.seatCount = String(room.players.length);
   $('players').replaceChildren(...projectSeats(room.players, state.user.id).map(renderPlayer));
   renderActions();
   renderMessages();
   startCountdown();
+  renderDecisionDialogs();
   try { sessionStorage.setItem('zhajinhua.roomId', room.id); } catch {}
 }
 
@@ -547,6 +573,20 @@ async function joinRoom(roomId) {
 }
 
 async function leaveCurrentRoom(){if(!state.room)return;const previousRoom=state.room;const roomId=previousRoom.id;disconnectRoomWs();state.room=null;try{await api(`/api/rooms/${roomId}/leave`,{method:'POST',body:{}});state.feed=[];try{sessionStorage.removeItem('zhajinhua.roomId');}catch{}$('roundFeed').replaceChildren();renderLobby();await refreshUser();await loadRoomList();}catch(error){state.room=previousRoom;renderRoom();connectWs();addFeed(error.message);}}
+
+async function chooseNextRound() {
+  if (!state.room) return;
+  try {
+    const data=await api(`/api/rooms/${state.room.id}/ready`,{ method:'POST', body:{ ready:true, autoStart: true } });
+    state.room=data.room; await refreshUser(); renderRoom();
+  } catch (error) { addFeed(error.message); }
+}
+
+async function chooseSpectatorView() {
+  if (!state.room) return;
+  try { const data=await api(`/api/rooms/${state.room.id}/ready`,{ method:'POST', body:{ ready:false, decision:'spectate', autoStart:true } }); state.room=data.room; renderRoom(); }
+  catch (error) { addFeed(error.message); }
+}
 
 async function roomAction(action, extra = {}) {
   if (!state.room) return;
@@ -897,18 +937,7 @@ $('joinRoomButton').addEventListener('click', () => {
   const code = prompt('输入房间号');
   if (code) joinRoom(code.trim());
 });
-$('leaveRoomButton').addEventListener('click', leaveCurrentRoom);
 $('refreshRoomsButton').addEventListener('click', loadRoomList);
-$('startNextButton').addEventListener('click', async () => {
-  try {
-    const data = await api(`/api/rooms/${state.room.id}/start-next`, { method: 'POST', body: {} });
-    state.room = data.room;
-    await refreshUser();
-    renderRoom();
-  } catch (error) {
-    addFeed(error.message);
-  }
-});
 $('observeButton').addEventListener('click', async () => {
   try {
     const data = await api(`/api/rooms/${state.room.id}/observe`, { method: 'POST', body: { enabled: !state.room.allowSpectators } });
@@ -918,16 +947,16 @@ $('observeButton').addEventListener('click', async () => {
     addFeed(error.message);
   }
 });
-$('spectateButton').addEventListener('click', async () => {
-  try {
-    const data = await api(`/api/rooms/${state.room.id}/spectate`, { method: 'POST', body: { enabled: true } });
-    state.room = data.room;
-    renderRoom();
-    connectWs();
-  } catch (error) {
-    addFeed(error.message);
-  }
-});
+$('prepReadyButton').addEventListener('click', chooseNextRound);
+$('settlementNextButton').addEventListener('click', chooseNextRound);
+$('prepSpectateButton').addEventListener('click', chooseSpectatorView);
+$('settlementSpectateButton').addEventListener('click', chooseSpectatorView);
+$('prepLeaveButton').addEventListener('click', leaveCurrentRoom);
+$('settlementLeaveButton').addEventListener('click', leaveCurrentRoom);
+for (const dialogId of ['preparationDialog','settlementDialog']) {
+  const decisionDialog = $(dialogId);
+  decisionDialog.addEventListener('cancel', (event) => event.preventDefault());
+}
 $('seeButton').addEventListener('click', () => roomAction('see'));
 $('revealButton').addEventListener('click', () => roomAction('reveal'));
 $('raiseButton').addEventListener('click', openRaiseDialog);

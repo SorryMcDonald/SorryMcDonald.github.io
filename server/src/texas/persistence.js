@@ -21,7 +21,16 @@ function deserializeRoom(state) {
   if (!state?.id) return null;
   return {
     ...state,
-    players:new Map(Array.isArray(state.players) ? state.players : []),
+    lastWinnerUserId:state.lastWinnerUserId ?? null,
+    players:new Map((Array.isArray(state.players) ? state.players : []).map(([id, player]) => [id, {
+      ...player,
+      ready:Boolean(player.ready),
+      participated:player.participated === undefined
+        ? Boolean(state.hand?.results?.some((result) => result.userId === player.userId))
+        : Boolean(player.participated),
+      roundDecision:player.roundDecision ?? null,
+      waiting:player.waiting ?? !player.inHand
+    }])),
     spectators:new Set(Array.isArray(state.spectators) ? state.spectators : []),
     events:Array.isArray(state.events) ? state.events.filter((event) => !isTransientChatEvent(event)) : [],
     processedActions:Array.isArray(state.processedActions) ? state.processedActions : [],

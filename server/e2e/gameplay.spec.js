@@ -38,7 +38,7 @@ async function expectSouthSeat(page) {
     const self = document.querySelector('.player-seat.self').getBoundingClientRect();
     return {
       selfCenter: self.top + self.height / 2,
-      southThreshold: felt.top + felt.height * 0.68,
+      southThreshold: felt.top + felt.height * 0.52,
       horizontalDelta: Math.abs(self.left + self.width / 2 - (felt.left + felt.width / 2))
     };
   });
@@ -83,7 +83,10 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   await registerUi(secondPage, '浏览乙');
   await joinVisibleRoom(secondPage, code);
   await expect(firstPage.locator('.player-seat')).toHaveCount(2);
-  await firstPage.locator('#startNextButton').click();
+  await expect(firstPage.locator('#preparationDialog')).toBeVisible();
+  await expect(secondPage.locator('#preparationDialog')).toBeVisible();
+  await firstPage.locator('#prepReadyButton').click();
+  await secondPage.locator('#prepReadyButton').click();
 
   await expect(firstPage.locator('.player-seat')).toHaveCount(2);
   await expect(secondPage.locator('.player-seat')).toHaveCount(2);
@@ -145,6 +148,7 @@ test('six-player desktop, mobile, and spectator tables stay inside the felt with
   for (const context of contexts.slice(1)) {
     expect((await context.request.post(`/api/rooms/${room.id}/join`, { data: {} })).status()).toBe(200);
   }
+  for (const context of contexts) expect((await context.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } })).status()).toBe(200);
   expect((await contexts[0].request.post(`/api/rooms/${room.id}/start-next`, { data: {} })).status()).toBe(200);
 
   for (const index of [0, 5]) {
@@ -180,6 +184,7 @@ test('three-player views stay south, expose countdown danger, and spectators rem
   for (const context of contexts.slice(1, 3)) await context.request.post(`/api/rooms/${room.id}/join`, { data: {} });
   await contexts[0].request.post(`/api/rooms/${room.id}/observe`, { data: { enabled: true } });
   await contexts[3].request.post(`/api/rooms/${room.id}/spectate`, { data: { enabled: true } });
+  for (const context of contexts.slice(0, 3)) await context.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } });
   await contexts[0].request.post(`/api/rooms/${room.id}/start-next`, { data: {} });
 
   for (const context of contexts.slice(0, 3)) {
@@ -224,6 +229,8 @@ test('renders comparison feedback for light, cinematic, and disabled motion mode
     const created = await first.request.post('/api/rooms', { data: {} });
     const room = (await created.json()).room;
     await second.request.post(`/api/rooms/${room.id}/join`, { data: {} });
+    await first.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } });
+    await second.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } });
     const started = await first.request.post(`/api/rooms/${room.id}/start-next`, { data: {} });
     const startedRoom = (await started.json()).room;
     const attacker = startedRoom.players.find((player) => player.seat === startedRoom.currentTurn);
@@ -256,6 +263,8 @@ test('a zero-balance account must type the exact refill text before receiving be
   const created = await first.request.post('/api/rooms', { data: { ante: 100000 } });
   const room = (await created.json()).room;
   await second.request.post(`/api/rooms/${room.id}/join`, { data: {} });
+  await first.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } });
+  await second.request.post(`/api/rooms/${room.id}/ready`, { data: { ready:true } });
   await first.request.post(`/api/rooms/${room.id}/start-next`, { data: {} });
   const firstMe = (await (await first.request.get('/api/auth/me')).json()).user;
   const secondMe = (await (await second.request.get('/api/auth/me')).json()).user;

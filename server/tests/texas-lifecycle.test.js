@@ -29,6 +29,8 @@ function fixture() {
   const service = new TexasService({ store, clock });
   const room = service.createRoom('u0', { buyIn:1000 });
   service.joinRoom(room.id, 'u1', { buyIn:1000 });
+  service.setReady(room.id, 'u0', true);
+  service.setReady(room.id, 'u1', true);
   return { clock, service, room };
 }
 

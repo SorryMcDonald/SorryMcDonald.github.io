@@ -2,6 +2,30 @@ import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 
 describe('browser client contract', () => {
+  it('uses preparation and settlement decision dialogs instead of toolbar round controls', async () => {
+    const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
+    const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');
+    for (const id of ['preparationDialog','prepReadyButton','prepSpectateButton','prepLeaveButton','settlementDialog','settlementNextButton','settlementSpectateButton','settlementLeaveButton','settlementResults']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    expect(js).toContain('/ready`');
+    expect(js).toContain('autoStart: true');
+    expect(js).toContain('preparation');
+    expect(js).toContain('settlement');
+    expect(js).toContain("body:{ ready:false, decision:'spectate', autoStart:true }");
+    expect(js).toMatch(/preparationDialog[\s\S]*?addEventListener\('cancel',[\s\S]*?preventDefault/);
+    expect(html).not.toMatch(/class="toolbar-actions"[^>]*>[\s\S]*?id="startNextButton"/);
+    expect(html).not.toMatch(/class="toolbar-actions"[^>]*>[\s\S]*?id="leaveRoomButton"/);
+  });
+
+  it('keeps desktop activity and chat on opposite sides of a central table column', async () => {
+    const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
+    const css = await readFile(new URL('../../public/styles.css', import.meta.url), 'utf8');
+    expect(html).toMatch(/id="tableLayout"[\s\S]*?class="round-panel"[\s\S]*?class="table-column"[\s\S]*?id="felt"[\s\S]*?id="actionPanel"[\s\S]*?class="chat-panel"/);
+    expect(css).toMatch(/@media\(min-width:801px\)[\s\S]*?grid-template-areas:"round table chat"/);
+    expect(css).toMatch(/\.table-column\{[^}]*grid-area:table/);
+    expect(css).toMatch(/\.action-panel\{[^}]*position:absolute/);
+  });
   it('contains the approved safety, navigation, observer, and settings controls', async () => {
     const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
     const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');
@@ -23,7 +47,6 @@ describe('browser client contract', () => {
     expect(html).toContain('id="roomLobby"');
     expect(html).toContain('id="roomList"');
     expect(html).toContain('id="refreshRoomsButton"');
-    expect(html).toContain('id="leaveRoomButton"');
     expect(html).toContain('id="tableLayout" hidden');
     expect(js).toContain("api('/api/rooms')");
     expect(js).toContain("/leave`");

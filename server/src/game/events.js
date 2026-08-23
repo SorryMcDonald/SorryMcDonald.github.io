@@ -22,17 +22,31 @@ export function appendEvent(room, eventType, payload = {}, audience = 'room') {
 
 export function visibleRoom(room, { userId, spectator = false, titles = new Map() } = {}) {
   const isSpectator = spectator || room.spectators.has(userId);
+  const own = [...room.players.values()].find((player) => !player.left && player.userId === userId);
+  const observerView = isSpectator || Boolean(own && !own.inRound && own.roundDecision === 'spectate');
+  const preparation = !isSpectator && own && !own.participated
+    ? { required:true, status:own.ready ? 'ready' : own.roundDecision === 'spectate' ? 'spectate' : 'pending', viewOnly:!own.inRound, ready:Boolean(own.ready) }
+    : null;
+  const settlement = !isSpectator && room.status === 'settled' && own?.participated
+    ? {
+      required:true, decision:own.roundDecision ?? 'pending', isWinner:own.userId === room.lastWinnerUserId,
+      winnerUserId:room.lastWinnerUserId ?? null,
+      players:(room.lastResults ?? []).map((result) => ({ userId:result.userId, nickname:result.nickname, payout:result.payout, net:result.net }))
+    }
+    : null;
   return {
     id: room.id, code: room.code, status: room.status, hostUserId: room.hostUserId,
     version: room.version, dealerUserId: room.dealerUserId, dealerSeat: room.dealerSeat, currentTurn: room.currentTurn,
     ante: room.ante, level: room.level, pot: room.pot, roundNumber: room.roundNumber,
     bettingRound: room.bettingRound, turnStartedAt: room.turnStartedAt, turnDeadlineAt: room.turnDeadlineAt,
-    allowSpectators: room.allowSpectators, isSpectator,
+    allowSpectators: room.allowSpectators, isSpectator, lastWinnerUserId:room.lastWinnerUserId ?? null,
     players: [...room.players.values()].filter((player) => !player.left).map((player) => {
-      const visible = isSpectator || room.status === 'settled' || player.revealed || (player.userId === userId && player.seen);
+      const visible = observerView || room.status === 'settled' || player.revealed || (player.userId === userId && player.seen);
       const result = {
         id: player.id, userId: player.userId, seat: player.seat, nickname: player.nickname,
         folded: player.folded, allIn: player.allIn, seen: player.seen, currentBet: player.currentBet,
+        inRound:Boolean(player.inRound), waiting:Boolean(player.waiting), ready:Boolean(player.ready),
+        participated:Boolean(player.participated), roundDecision:player.roundDecision ?? null,
         totalContribution: player.totalContribution, actionSeq: player.actionSeq, lastAction: player.lastAction,
         revealed: Boolean(player.revealed), mayReveal: player.userId === userId && Boolean(player.mayReveal),
         cardCount: player.cards?.length ?? 0, titles: titles.get(player.userId) ?? []
@@ -44,6 +58,8 @@ export function visibleRoom(room, { userId, spectator = false, titles = new Map(
       return result;
     }),
     spectators: [...room.spectators].map((id) => ({ userId: id })),
-    messages: (room.messages ?? []).slice(-20)
+    messages: (room.messages ?? []).slice(-20),
+    preparation,
+    settlement
   };
 }

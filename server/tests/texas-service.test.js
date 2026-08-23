@@ -7,6 +7,7 @@ function setup(count = 2) {
   const service = new TexasService({ store:{ users, banners:[] } });
   const room = service.createRoom('u0', { smallBlind:10, bigBlind:20, minBuyIn:400, maxBuyIn:2000, buyIn:1000 });
   for (let index = 1; index < count; index += 1) service.joinRoom(room.id, `u${index}`, { buyIn:1000, seat:index });
+  for (let index = 0; index < count; index += 1) service.setReady(room.id, `u${index}`, true);
   return { service, users, room };
 }
 
@@ -97,8 +98,9 @@ describe('Texas room state machine', () => {
     const previousHand = room.hand.id;
     for (const player of [...room.players.values()]) {
       if (player.stack < room.minBuyIn) service.rebuy(room.id, player.userId, room.minBuyIn-player.stack);
+      service.setReady(room.id, player.userId, true);
     }
-    service.startHand(room.id, 'u0');
+    service.startHand(room.id, room.lastWinnerUserId);
     expect(room.hand.id).not.toBe(previousHand);
   });
 
