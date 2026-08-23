@@ -516,7 +516,7 @@ dialog::backdrop{background:rgba(4,10,7,.78)}
   .table-column{grid-area:table;position:relative;display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:center}
   .felt{grid-area:auto;top:-43px;width:calc(100% - 28px);aspect-ratio:1.65;margin:14px}
   .action-panel{grid-area:auto;position:absolute;bottom:24px;left:50%;z-index:12;width:min(92%,560px);margin:0;transform:translateX(-50%)}
-  .player-seat.self{top:60%}
+  .player-seat.self{top:76%}
   .round-panel,.chat-panel{display:flex;min-height:0;flex-direction:column}
   .round-feed,.chat-messages{height:auto;min-height:0;flex:1}
 }

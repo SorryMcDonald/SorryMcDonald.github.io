@@ -104,6 +104,8 @@ test('keeps the Zhajinhua activity and chat rails beside a large responsive tabl
   const layout = await desktop.evaluate(() => {
     const stage = document.querySelector('#tableLayout').getBoundingClientRect();
     const felt = document.querySelector('#felt').getBoundingClientRect();
+    const center = document.querySelector('.felt-center').getBoundingClientRect();
+    const selfName = document.querySelector('.player-seat.self .player-name').getBoundingClientRect();
     const round = document.querySelector('.round-panel').getBoundingClientRect();
     const chat = document.querySelector('.chat-panel').getBoundingClientRect();
     const chatForm = document.querySelector('#chatForm').getBoundingClientRect();
@@ -112,6 +114,7 @@ test('keeps the Zhajinhua activity and chat rails beside a large responsive tabl
     return {
       tableRatio:felt.width / stage.width,
       feltVerticalShift:felt.top - (stage.top + (stage.height - felt.height) / 2),
+      selfInfoClearance:selfName.top - center.bottom,
       roundLeftOfFelt:round.right <= felt.left + 2,
       chatRightOfFelt:chat.left >= felt.right - 2,
       actionInsideStage:action.top >= felt.top && action.bottom <= stage.bottom + 2,
@@ -125,6 +128,7 @@ test('keeps the Zhajinhua activity and chat rails beside a large responsive tabl
   });
   expect(layout.tableRatio).toBeGreaterThanOrEqual(0.58);
   expect(layout.feltVerticalShift).toBeLessThanOrEqual(-39);
+  expect(layout.selfInfoClearance).toBeGreaterThanOrEqual(12);
   expect(layout.roundLeftOfFelt).toBe(true);
   expect(layout.chatRightOfFelt).toBe(true);
   expect(layout.actionInsideStage).toBe(true);
