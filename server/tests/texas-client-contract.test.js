@@ -28,9 +28,10 @@ describe('Texas browser client contract',() => {
     const html=await readFile(new URL('../../public/dezhou.html',import.meta.url),'utf8');
     const js=await readFile(new URL('../../public/dezhou.js',import.meta.url),'utf8');
     const css=await readFile(new URL('../../public/dezhou.css',import.meta.url),'utf8');
-    for (const id of ['startButton','leaveButton','rebuyButton','refreshButton','seats']) expect(html).toContain(`id="${id}"`);
+    for (const id of ['startButton','leaveButton','rebuyButton','refreshButton','seats','seatLabels']) expect(html).toContain(`id="${id}"`);
     expect(js).toContain("sessionStorage.setItem('texas.roomId'");
     expect(js).toContain('function seatPosition');
+    expect(js).toContain('function renderSeatLabel');
     expect(css).toMatch(/@media\(max-width:620px\)/);
   });
 

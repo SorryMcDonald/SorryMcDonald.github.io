@@ -51,9 +51,15 @@ function cardNode(card, concealed = false) {
 }
 
 function seatPosition(index, total) {
-  if (total <= 1) return { left:'50%', top:'21%' };
-  const angle = (200 + (140 * index) / (total - 1)) * Math.PI / 180;
-  return { left:`${50 + 43 * Math.cos(angle)}%`, top:`${46 + 35 * Math.sin(angle)}%` };
+  // Keep every opponent in a shallow two-row rail. The center of the felt is
+  // reserved for five community cards and the pot, so cards cannot drift
+  // into that region when the room has six to nine players.
+  const columns = Math.min(4, Math.max(1, Math.ceil(total / 2)));
+  const row = Math.floor(index / columns);
+  const rowCount = Math.min(columns, total - row * columns);
+  const column = index % columns;
+  const left = rowCount === 1 ? 50 : 12 + (76 * column) / (rowCount - 1);
+  return { left:`${left}%`, top:`${row === 0 ? 12 : 22}%` };
 }
 
 function projectedSeatSlots(room) {
@@ -105,7 +111,9 @@ function renderPlayerSeat(slot, start) {
   if (player.allIn) seat.classList.add('all-in');
   if (player.seat === state.room.currentTurn) seat.classList.add('current');
   const avatar = document.createElement('span'); avatar.className = 'player-avatar'; avatar.textContent = String(player.nickname ?? '?').slice(0, 1);
-  const name = document.createElement('div'); name.className = 'player-name'; name.textContent = `${player.nickname}${self ? '（你）' : ''}`;
+  // Keep an accessible/instrumentation name on the seat while the visible
+  // label is rendered in the rail outside the felt.
+  const name = document.createElement('span'); name.className = 'player-name player-name-accessible'; name.textContent = `${player.nickname}${self ? '（你）' : ''}`;
   const chips = document.createElement('div'); chips.className = 'player-stack';
   const stackValue = document.createElement('span'); stackValue.className = 'stack-value'; stackValue.textContent = money(player.stack);
   chips.append(stackValue, document.createTextNode(' 筹码'));
@@ -125,10 +133,28 @@ function renderPlayerSeat(slot, start) {
   return seat;
 }
 
+function renderSeatLabel(slot) {
+  const { player, self } = slot;
+  const label = document.createElement('span');
+  label.className = 'seat-label';
+  label.dataset.userId = player.userId;
+  label.dataset.seat = String(player.seat);
+  label.textContent = `${player.nickname}${self ? '（你）' : ''}`;
+  if (self) label.classList.add('self');
+  if (player.folded) label.classList.add('folded');
+  if (player.seat === state.room.currentTurn) label.classList.add('current');
+  return label;
+}
+
 function renderSeats() {
-  const container = $('seats'); container.replaceChildren(); if (!state.room) return;
+  const container = $('seats'); const labels = $('seatLabels'); container.replaceChildren(); labels?.replaceChildren(); if (!state.room) return;
   const start = lastStartEvent(state.room)?.payload ?? {};
-  for (const slot of projectedSeatSlots(state.room)) container.append(slot.player ? renderPlayerSeat(slot, start) : renderEmptySeat(slot));
+  for (const slot of projectedSeatSlots(state.room)) {
+    if (slot.player) {
+      container.append(renderPlayerSeat(slot, start));
+      labels?.append(renderSeatLabel(slot));
+    } else container.append(renderEmptySeat(slot));
+  }
 }
 
 function renderBoard() {
@@ -277,10 +303,12 @@ function notifyTableEffect(effect, event) {
 
 function playSeatEntry(effect) {
   const seat = document.querySelector(`.player-seat[data-user-id="${CSS.escape(String(effect.userId))}"]`); if (!seat) return;
+  const label = document.querySelector(`.seat-label[data-user-id="${CSS.escape(String(effect.userId))}"]`);
   seat.classList.add('seat-entering','seat-edge-flash');
+  label?.classList.add('seat-entering','seat-edge-flash');
   const chips = document.createElement('div'); chips.className = 'entry-chip-stack';
   for (let index = 0; index < 4; index += 1) { const chip = document.createElement('span'); chip.className = 'entry-chip'; chip.style.setProperty('--chip-index',String(index)); chips.append(chip); }
-  seat.append(chips); window.setTimeout(() => seat.classList.remove('seat-entering','seat-edge-flash'),950); window.setTimeout(() => chips.remove(),1200);
+  seat.append(chips); window.setTimeout(() => { seat.classList.remove('seat-entering','seat-edge-flash'); label?.classList.remove('seat-entering','seat-edge-flash'); },950); window.setTimeout(() => chips.remove(),1200);
 }
 
 function makeChipFlight(className, start, end, label = '') {
@@ -315,8 +343,10 @@ function playFold(effect) {
 }
 
 function playCheck(effect) {
-  const seat = document.querySelector(`.player-seat[data-user-id="${CSS.escape(String(effect.userId))}"]`); seat?.classList.add('seat-check-flash');
-  window.setTimeout(() => seat?.classList.remove('seat-check-flash'),650);
+  const seat = document.querySelector(`.player-seat[data-user-id="${CSS.escape(String(effect.userId))}"]`);
+  const label = document.querySelector(`.seat-label[data-user-id="${CSS.escape(String(effect.userId))}"]`);
+  seat?.classList.add('seat-check-flash'); label?.classList.add('seat-check-flash');
+  window.setTimeout(() => { seat?.classList.remove('seat-check-flash'); label?.classList.remove('seat-check-flash'); },650);
   const toast = document.createElement('span'); toast.className = 'action-toast check-toast'; toast.textContent = '✓ 过牌';
   const point = tablePointForSeat(effect); toast.style.left = `${point.x}px`; toast.style.top = `${point.y}px`; appendTransient(toast,800);
 }
@@ -349,7 +379,9 @@ function playSettlement(effect) {
   strip.textContent = uncontested ? `无人跟注 · ${winners.map((winner) => `${winner.nickname} +${money(winner.payout)}`).join('，')}` : winners.map((winner) => `${winner.nickname} ${winner.handType ?? '胜出'} · +${money(winner.payout)}`).join(' · ');
   strip.classList.add('visible',uncontested ? 'uncontested' : 'showdown'); window.setTimeout(() => strip.classList.remove('visible','uncontested','showdown'),3300);
   for (const winner of winners) {
-    const seat = document.querySelector(`.player-seat[data-user-id="${CSS.escape(String(winner.userId))}"]`); seat?.classList.add('winner-seat');
+    const seat = document.querySelector(`.player-seat[data-user-id="${CSS.escape(String(winner.userId))}"]`);
+    const label = document.querySelector(`.seat-label[data-user-id="${CSS.escape(String(winner.userId))}"]`);
+    seat?.classList.add('winner-seat'); label?.classList.add('winner-seat');
     if (!uncontested) highlightWinningCards(winner);
     const stack = seat?.querySelector('.stack-value');
     if (stack) { const finalValue = Number(String(stack.textContent).replace(/,/g,'')); animateNumber(stack,Math.max(0,finalValue - Number(winner.payout ?? 0)),finalValue,900); }
