@@ -30,6 +30,27 @@ describe('browser client contract', () => {
     expect(zhajinhuaJs).not.toContain("document.querySelectorAll('[data-nav]').forEach((button) => button.addEventListener");
   });
 
+  it('provides the complete joyful Doudizhu table experience', async () => {
+    const [html, js, css] = await Promise.all([
+      readFile(new URL('../../public/doudizhu.html', import.meta.url), 'utf8'),
+      readFile(new URL('../../public/doudizhu.js', import.meta.url), 'utf8'),
+      readFile(new URL('../../public/doudizhu.css', import.meta.url), 'utf8')
+    ]);
+
+    for (const id of ['soundButton', 'phaseLabel', 'multiplierLabel', 'bottomCards', 'gamePanel', 'hand', 'effectLayer']) {
+      expect(html).toContain('id="' + id + '"');
+    }
+    expect(html).toContain('欢乐斗地主');
+    expect(js).toContain('function updateCountdown');
+    expect(js).toContain('function suggestPlay');
+    expect(js).toContain('function toggleSound');
+    expect(js).toContain("playSound('bomb')");
+    expect(js).toContain('state.selected=new Set([...state.selected].filter');
+    expect(css).toContain('.countdown.urgent');
+    expect(css).toContain('.effect-layer.active');
+    expect(css).toContain('@media(max-width:760px)');
+  });
+
   it('separates the room lobby from the active table and supports leaving and room discovery', async () => {
     const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
     const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');
