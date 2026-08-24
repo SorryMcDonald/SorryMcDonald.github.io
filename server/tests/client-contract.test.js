@@ -15,6 +15,21 @@ describe('browser client contract', () => {
     expect(html).toMatch(/<a[^>]+href="\/dezhou\.html"[^>]*>德州扑克<\/a>/);
   });
 
+  it('exposes Doudizhu as an open cross-game destination', async () => {
+    const [zhajinhuaHtml, texasHtml, zhajinhuaJs] = await Promise.all([
+      readFile(new URL('../../public/index.html', import.meta.url), 'utf8'),
+      readFile(new URL('../../public/dezhou.html', import.meta.url), 'utf8'),
+      readFile(new URL('../../public/app.js', import.meta.url), 'utf8')
+    ]);
+
+    for (const html of [zhajinhuaHtml, texasHtml]) {
+      expect(html).toMatch(/<a class="nav-link" data-nav="landlord" href="\/doudizhu\.html">斗地主<\/a>/);
+      expect(html).not.toMatch(/nav-link-muted[^>]*data-nav="landlord"/);
+    }
+    expect(zhajinhuaJs).toContain("document.querySelectorAll('button[data-nav]')");
+    expect(zhajinhuaJs).not.toContain("document.querySelectorAll('[data-nav]').forEach((button) => button.addEventListener");
+  });
+
   it('separates the room lobby from the active table and supports leaving and room discovery', async () => {
     const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
     const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');

@@ -992,7 +992,7 @@ $('settingsButton').addEventListener('click', () => {
 $('musicToggle').addEventListener('change', saveSettings);
 $('effectsToggle').addEventListener('change', saveSettings);
 $('motionSelect').addEventListener('change', saveSettings);
-document.querySelectorAll('[data-nav]').forEach((button) => button.addEventListener('click', () => {
+document.querySelectorAll('button[data-nav]').forEach((button) => button.addEventListener('click', () => {
   const destination = button.dataset.nav;
   if (destination === 'leaderboard') {
     showLeaderboard();
