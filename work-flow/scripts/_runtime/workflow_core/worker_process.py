@@ -19,10 +19,7 @@ def _terminate_process_tree(process):
             killer.wait(timeout=10)
         except subprocess.TimeoutExpired:
             killer.kill()
-            try:
-                killer.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
+            killer.wait()
         if process.poll() is None:
             process.kill()
     else:
@@ -34,10 +31,7 @@ def _terminate_process_tree(process):
         process.wait(timeout=10)
     except subprocess.TimeoutExpired:
         process.kill()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            pass
+        process.wait()
 
 
 def run_process_tree(command, *, run_override=None, **kwargs):
@@ -68,10 +62,7 @@ def run_process_tree(command, *, run_override=None, **kwargs):
         stdout, stderr = process.communicate(input_value, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         _terminate_process_tree(process)
-        try:
-            stdout, stderr = process.communicate(timeout=10)
-        except subprocess.TimeoutExpired as drain_error:
-            stdout, stderr = drain_error.stdout, drain_error.stderr
+        stdout, stderr = process.communicate()
         exc.stdout = stdout
         exc.stderr = stderr
         raise

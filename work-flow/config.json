@@ -184,7 +184,7 @@
       "role": "writer"
     }
   },
-  "runtime_manifest_sha256": "14a5ccba1ad95d7d3fd3114f057b24ad33ffc01603d34f4e55b72eb89b804e99",
+  "runtime_manifest_sha256": "2528a0e4f1b8482f1408d25739fc25dea25503622659e1de0375db2253ea9ca0",
   "runtime_version": "1.2.0",
   "schema_version": 1,
   "template_baselines": {

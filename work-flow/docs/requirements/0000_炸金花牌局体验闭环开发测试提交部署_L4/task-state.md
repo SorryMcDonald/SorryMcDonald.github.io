@@ -48,26 +48,26 @@ level: L4
   "phase": "complete",
   "residual_risk": [],
   "result_ref": "work-flow/docs/requirements/0000_炸金花牌局体验闭环开发测试提交部署_L4/result.md",
-  "result_sha256": "35f574f17996759eed01b7233f492a82be55cbc98f9df5ce97ec14a5cdbe5da8",
+  "result_sha256": "ad8043117c614614fb2d8ff5f8936f18611860b10482bf03b1fecbf4df8c1b3b",
   "review": [
     {
       "kind": "review",
-      "recorded_at": "2026-08-19T20:28:45Z",
+      "recorded_at": "2026-08-24T03:02:45Z",
       "ref": "work-flow/docs/requirements/0000_炸金花牌局体验闭环开发测试提交部署_L4/review.md",
-      "sha256": "52c3d294e4969fda1cb3f54bad836cc6d981e15975c50195dc44d195474f669d",
+      "sha256": "672151d8a8c9d4d0be8ae68cd089de4982aa45e917a449dba060e0ff3454e166",
       "status": "passed"
     }
   ],
   "route": null,
   "task_id": "be50d92f-59cc-4b99-8286-31b29374c38b",
   "title": "炸金花牌局体验闭环开发测试提交部署",
-  "updated_at": "2026-08-19T20:28:48Z",
+  "updated_at": "2026-08-24T03:02:45Z",
   "validation": [
     {
       "kind": "validation",
-      "recorded_at": "2026-08-19T20:28:40Z",
+      "recorded_at": "2026-08-24T03:02:45Z",
       "ref": "work-flow/docs/requirements/0000_炸金花牌局体验闭环开发测试提交部署_L4/validation.md",
-      "sha256": "822c7dd50878ba086eb4a1705acc5eee2c48391e2e565148757e3375f15141e1",
+      "sha256": "8a42376b8e70b7a4467b16d1d96ea30c0244d0f75653bed990f62734ea94ae5e",
       "status": "passed"
     }
   ]

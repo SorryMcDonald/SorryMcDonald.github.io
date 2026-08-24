@@ -216,9 +216,29 @@
         "to": "complete"
       },
       "name": "task.transition"
+    },
+    {
+      "at": "2026-08-24T03:02:45Z",
+      "detail": {
+        "from": "ws-be87c496504dce3ff0e7a7fe",
+        "to": "ws-fd23a02ea0f2db963627743a"
+      },
+      "name": "workspace.migrate"
+    },
+    {
+      "at": "2026-08-24T03:02:45Z",
+      "detail": {
+        "reason": "manual recovery after worktree consolidation",
+        "task_ids": [
+          "71d4428f-ff22-4e8d-bdb8-f09efcb0221b",
+          "be50d92f-59cc-4b99-8286-31b29374c38b",
+          "e842278c-e053-45be-aa35-a144f49b57ab"
+        ]
+      },
+      "name": "state.reindex"
     }
   ],
-  "revision": 26,
+  "revision": 27,
   "runtime_version": "1.2.0",
   "schema_version": 1,
   "status": "initialized",
@@ -266,26 +286,26 @@
       "phase": "complete",
       "residual_risk": [],
       "result_ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/result.md",
-      "result_sha256": "2e5332695cd3ef1ec7c2b46dc9e11fb6ad27eeb3a04c752cc876479cb4f721ad",
+      "result_sha256": "a416e8af70f6d43be65dba8da04fc501d83d4a0231475a774425fe3fc3a3b9a5",
       "review": [
         {
           "kind": "review",
-          "recorded_at": "2026-08-19T20:29:07Z",
+          "recorded_at": "2026-08-24T03:02:45Z",
           "ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/review.md",
-          "sha256": "44687ecbe5f5bc5cc56a7288e53422d73736f7df033fd2e715dbe17502d51126",
+          "sha256": "780f41cb1ea833bd33c8d7db965a03bcd0c27aef114f2245f61eb0a09cbd05dc",
           "status": "passed"
         }
       ],
       "route": null,
       "task_id": "71d4428f-ff22-4e8d-bdb8-f09efcb0221b",
       "title": "炸金花生产发布与回滚审计",
-      "updated_at": "2026-08-19T20:29:10Z",
+      "updated_at": "2026-08-24T03:02:45Z",
       "validation": [
         {
           "kind": "validation",
-          "recorded_at": "2026-08-19T20:29:02Z",
+          "recorded_at": "2026-08-24T03:02:45Z",
           "ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/validation.md",
-          "sha256": "f59772fbd53d6988c67c8dcd63d83fde1040a6961a073e9ece5a10028f207c63",
+          "sha256": "c205ed12aadcff660f91f2e1629ce3115a3778dda789c2669bbd1139b24b02be",
           "status": "passed"
         }
       ]
@@ -296,10 +316,10 @@
       "level": "L4",
       "phase": "complete",
       "state_ref": "work-flow/docs/requirements/0000_炸金花牌局体验闭环开发测试提交部署_L4/task-state.md",
-      "state_sha256": "cba72423d6d7b36d252cd0b8facebb485e3ca5a66425a3826ce096bbe7afeb53",
+      "state_sha256": "be8c356d3bc13a8073b1b805bab937f058313a002e693722664554c181c19b35",
       "task_id": "be50d92f-59cc-4b99-8286-31b29374c38b",
       "title": "炸金花牌局体验闭环开发测试提交部署",
-      "updated_at": "2026-08-19T20:28:48Z"
+      "updated_at": "2026-08-24T03:02:45Z"
     },
     "e842278c-e053-45be-aa35-a144f49b57ab": {
       "display_seq": "0001",
@@ -307,14 +327,14 @@
       "level": "L3",
       "phase": "complete",
       "state_ref": "work-flow/docs/requirements/0001_炸金花接口黑白盒与浏览器验收_L3/task-state.md",
-      "state_sha256": "ecc7661ea2923313537c4c9819c072aa3ca71a770b796c9cfc1912a13e4a8ea4",
+      "state_sha256": "dd3312b3358c3b18f79a09d729df53f74b650a40b02882751f8aa09cc7322b9e",
       "task_id": "e842278c-e053-45be-aa35-a144f49b57ab",
       "title": "炸金花接口黑白盒与浏览器验收",
-      "updated_at": "2026-08-19T20:28:59Z"
+      "updated_at": "2026-08-24T03:02:45Z"
     }
   },
   "template_version": "1.0.0",
-  "workspace_id": "ws-be87c496504dce3ff0e7a7fe"
+  "workspace_id": "ws-fd23a02ea0f2db963627743a"
 }
 ---end-workflow-state-json---
 

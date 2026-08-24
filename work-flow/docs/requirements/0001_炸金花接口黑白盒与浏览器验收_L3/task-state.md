@@ -35,26 +35,26 @@ level: L3
   "phase": "complete",
   "residual_risk": [],
   "result_ref": "work-flow/docs/requirements/0001_炸金花接口黑白盒与浏览器验收_L3/result.md",
-  "result_sha256": "d39e6301d27b50f2c142682d808ab3801e4c02fc04a4bdb31bb88b51b6750177",
+  "result_sha256": "bada5ea8beef2ef95450aeb92c60d04f0cfa8400d2bef795a6de38fd632c4079",
   "review": [
     {
       "kind": "review",
-      "recorded_at": "2026-08-19T20:28:56Z",
+      "recorded_at": "2026-08-24T03:02:45Z",
       "ref": "work-flow/docs/requirements/0001_炸金花接口黑白盒与浏览器验收_L3/review.md",
-      "sha256": "a555b0e54ed6b2935419ea5ba762b82129100669a363a19cfb36e7d549983c54",
+      "sha256": "72ee076c000e663f1fa1e773c7b5c81a7064fbad43ed02955961474d64b11534",
       "status": "passed"
     }
   ],
   "route": null,
   "task_id": "e842278c-e053-45be-aa35-a144f49b57ab",
   "title": "炸金花接口黑白盒与浏览器验收",
-  "updated_at": "2026-08-19T20:28:59Z",
+  "updated_at": "2026-08-24T03:02:45Z",
   "validation": [
     {
       "kind": "validation",
-      "recorded_at": "2026-08-19T20:28:51Z",
+      "recorded_at": "2026-08-24T03:02:45Z",
       "ref": "work-flow/docs/requirements/0001_炸金花接口黑白盒与浏览器验收_L3/validation.md",
-      "sha256": "f244dee0e5c84a7a0be46b22fb738df5992168f791b2d5701a7f449644cbb76d",
+      "sha256": "bc2dce2d289e55cca37845aab9963a3bb0cc36a668c51f154d3a1403727d5482",
       "status": "passed"
     }
   ]

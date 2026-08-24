@@ -83,10 +83,7 @@ def _read_prompt(root, prompt_file):
         prompt_path.relative_to(root)
     except ValueError:
         _reject(2, "prompt_file_escape")
-    try:
-        return prompt_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        _reject(2, "prompt_file_unreadable", message=str(exc))
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def prepare_worker(args):

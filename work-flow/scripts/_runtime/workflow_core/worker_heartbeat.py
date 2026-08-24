@@ -42,7 +42,6 @@ class OperationHeartbeat:
                 self.failures.append({"exit_code": 10, "error": "heartbeat_exception", "message": str(exc)})
                 self.stop_event.set()
                 return
-            payload = payload if isinstance(payload, dict) else {}
             if code == 0:
                 self.successful += 1
                 self.last_success = time.monotonic()

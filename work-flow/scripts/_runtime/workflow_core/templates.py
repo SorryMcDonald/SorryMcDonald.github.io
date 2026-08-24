@@ -5,7 +5,6 @@ from .constants import (
     IMPORT_END_PREFIX,
     IMPORT_START_PREFIX,
     RUNTIME_VERSION,
-    SCHEMA_VERSION,
     STATE_END,
     STATE_START,
     TEMPLATE_VERSION,
@@ -53,7 +52,7 @@ def extract_imported_sections(text):
 
 def render_state(mode, workspace_id=None):
     state = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": 1,
         "runtime_version": RUNTIME_VERSION,
         "template_version": TEMPLATE_VERSION,
         "mode": mode,
@@ -70,7 +69,7 @@ def render_state(mode, workspace_id=None):
 
 def render_config(mode, managed_files, template_baselines=None, runtime_manifest_sha256=None):
     config = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": 1,
         "runtime_version": RUNTIME_VERSION,
         "template_version": TEMPLATE_VERSION,
         "mode": mode,

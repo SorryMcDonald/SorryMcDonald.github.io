@@ -20,10 +20,6 @@ L2_CONFIRMATION_REASONS = {
     "scope_expansion",
     "new_runtime_dependency",
 }
-
-
-class StateBusyError(RuntimeError):
-    pass
 TRANSITIONS = {
     "intake": {"planned", "implementing"},
     "planned": {"approved", "implementing"},
@@ -44,7 +40,7 @@ def state_path(root):
     return Path(root) / "work-flow" / "state.md"
 
 
-def _read_state_document(root, *, validate_workspace=True):
+def read_state(root):
     path = state_path(root)
     if not path.exists():
         raise ValueError("workflow state is missing")
@@ -57,7 +53,7 @@ def _read_state_document(root, *, validate_workspace=True):
     if data.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("workflow state schema version is unsupported")
     expected_workspace = workspace_identity(root)
-    if validate_workspace and data.get("workspace_id") != expected_workspace:
+    if data.get("workspace_id") != expected_workspace:
         raise ValueError("workflow state workspace identity mismatch")
     for key, default in (("revision", 0), ("tasks", {}), ("completed_tasks", {}), ("recent_events", []), ("active_task_id", None)):
         data.setdefault(key, default)
@@ -65,10 +61,6 @@ def _read_state_document(root, *, validate_workspace=True):
         data["recent_events"] = data["recent_events"][-50:]
     _hydrate_task_summaries(root, data)
     return data
-
-
-def read_state(root):
-    return _read_state_document(root)
 
 
 def _render_state(data):
@@ -178,7 +170,7 @@ def _archive_dropped_events(root, events):
     return archive, existed, original
 
 
-def write_state(root, data, expected_revision=None, operation_id=None, *, allow_legacy_workspace=False):
+def write_state(root, data, expected_revision=None, operation_id=None):
     operation = get_operation(root, operation_id)
     if not operation or operation.get("role") not in WRITE_ROLES:
         raise PermissionError("operation lock is missing or operation_id does not match")
@@ -187,16 +179,16 @@ def write_state(root, data, expected_revision=None, operation_id=None, *, allow_
         fd = os.open(str(guard), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         os.close(fd)
     except FileExistsError as exc:
-        raise StateBusyError("state mutation is already in progress") from exc
+        raise RuntimeError("state mutation is already in progress") from exc
     try:
-        return _write_state_unguarded(root, data, expected_revision, allow_legacy_workspace=allow_legacy_workspace)
+        return _write_state_unguarded(root, data, expected_revision)
     finally:
         guard.unlink(missing_ok=True)
 
 
-def _write_state_unguarded(root, data, expected_revision=None, *, allow_legacy_workspace=False):
+def _write_state_unguarded(root, data, expected_revision=None):
     path = state_path(root)
-    current = _read_state_document(root, validate_workspace=not allow_legacy_workspace)
+    current = read_state(root)
     current_revision = int(current.get("revision", 0))
     if expected_revision is not None and current_revision != expected_revision:
         raise RuntimeError(f"revision conflict: expected {expected_revision}, current {current_revision}")
@@ -349,29 +341,11 @@ def _mutating_operation(args):
 
 def state_command(args):
     try:
+        data = read_state(args.root)
         action = args.action
-        migration = action == "migrate-workspace"
-        data = _read_state_document(args.root, validate_workspace=not migration)
-        operation = _mutating_operation(args) if action in {"add", "transition", "migrate-workspace"} else None
-        if action in {"add", "transition", "migrate-workspace"} and not operation:
+        operation = _mutating_operation(args) if action in {"add", "transition"} else None
+        if action in {"add", "transition"} and not operation:
             return 4, {"error": "operation_lock_required"}
-        if action == "migrate-workspace":
-            if args.expected_revision is None:
-                return 2, {"error": "expected_revision_required"}
-            legacy_workspace = workspace_identity(args.root, is_git=False)
-            current_workspace = workspace_identity(args.root)
-            if data.get("workspace_id") != legacy_workspace or legacy_workspace == current_workspace:
-                return 4, {"error": "workspace_identity_migration_not_allowed"}
-            previous_workspace = data.get("workspace_id")
-            _event(data, "workspace.migrate", {"from": previous_workspace, "to": current_workspace})
-            written = write_state(
-                args.root,
-                data,
-                args.expected_revision,
-                args.operation_id,
-                allow_legacy_workspace=True,
-            )
-            return 0, {"status": "migrated", "from": previous_workspace, "to": current_workspace, "state": written}
         if action == "read":
             return 0, {"state": data}
         if action == "list":
@@ -397,7 +371,7 @@ def state_command(args):
                 return 2, {"error": "task_id_must_be_uuid"}
             if operation.get("task_id") != task_id:
                 return 4, {"error": "operation_identity_mismatch"}
-            if task_id in data["tasks"] or task_id in data.get("completed_tasks", {}):
+            if task_id in data["tasks"]:
                 return 2, {"error": "task_exists"}
             now = _now()
             task = {
@@ -532,8 +506,6 @@ def state_command(args):
         return 2, {"error": "unsupported_state_action"}
     except PermissionError as exc:
         return 4, {"error": "operation_lock_required", "message": str(exc)}
-    except StateBusyError as exc:
-        return 4, {"error": "state_write_in_progress", "message": str(exc)}
     except RuntimeError as exc:
         return 4, {"error": "revision_conflict", "message": str(exc)}
     except (OSError, ValueError, json.JSONDecodeError) as exc:

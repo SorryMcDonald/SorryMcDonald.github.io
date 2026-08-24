@@ -242,7 +242,7 @@ def validate_project(root, strict=False):
     config = None
     if (root / "work-flow/config.json").is_file():
         config = _load_config(root, issues)
-        if config is not None:
+        if config:
             if config.get("schema_version") != SCHEMA_VERSION:
                 issues.append(issue("config_schema_version", "config schema version is incorrect.", "work-flow/config.json"))
             if config.get("runtime_version") != RUNTIME_VERSION:
@@ -269,6 +269,6 @@ def validate_project(root, strict=False):
         _validate_runtime(root, config, issues)
         _validate_lock(root, issues)
         _validate_root_pointer(root, issues)
-        if config is not None:
+        if config:
             _validate_path_escapes(root, config, issues)
     return {"valid": not issues, "issues": issues, "strict": bool(strict)}
