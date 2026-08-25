@@ -53,6 +53,22 @@ async function expectSelfCardsInsideFelt(page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+async function texasTableMetrics(page, viewport, zoom) {
+  await page.setViewportSize(viewport);
+  return page.evaluate((scale) => {
+    const felt = document.querySelector('#pokerTable').getBoundingClientRect();
+    const column = document.querySelector('.table-column').getBoundingClientRect();
+    const actionBar = document.querySelector('#actionBar');
+    const actionBottom = actionBar.hidden ? felt.bottom : actionBar.getBoundingClientRect().bottom;
+    return {
+      cssWidth: felt.width,
+      physicalWidth: felt.width * scale,
+      overflow: Math.max(felt.bottom, actionBottom) - column.bottom,
+      pageOverflow: document.documentElement.scrollHeight - innerHeight
+    };
+  }, zoom);
+}
+
 async function takeLegalAction(contextByUser, observerContext, roomId, preferred) {
   const shared = await roomView(observerContext, roomId);
   const actor = shared.players.find((player) => player.seat === shared.currentTurn);
@@ -93,6 +109,40 @@ test('Texas navigation keeps 牌局 local and matches the Zhajinhua header contr
   await page.locator('button[data-nav="rooms"]').click();
   await expect(page).toHaveURL(/\/dezhou\.html$/);
   await expect(page.locator('button[data-nav="rooms"]')).toHaveClass(/active/);
+  await context.close();
+});
+
+test('Texas table stays inside its column and follows the browser zoom direction', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL });
+  await register(context, '缩放');
+  const created = await context.request.post('/api/texas/rooms', { data:{ smallBlind:100, bigBlind:200, buyIn:10_000, maxPlayers:6 } });
+  const room = (await created.json()).room;
+  const page = await openTrackedRoom(context, room.id);
+  const samples = [];
+
+  for (const scenario of [
+    { viewport:{ width:2390, height:1143 }, zoom:0.8 },
+    { viewport:{ width:1912, height:914 }, zoom:1 },
+    { viewport:{ width:1530, height:731 }, zoom:1.25 }
+  ]) {
+    const metrics = await texasTableMetrics(page, scenario.viewport, scenario.zoom);
+    samples.push(metrics);
+  }
+
+  for (const sample of samples) expect(sample.overflow).toBeLessThanOrEqual(1);
+  expect(samples[1].pageOverflow).toBeLessThanOrEqual(1);
+  expect(Math.max(...samples.map((sample) => sample.cssWidth)) - Math.min(...samples.map((sample) => sample.cssWidth))).toBeLessThanOrEqual(2);
+  expect(samples[0].physicalWidth).toBeLessThan(samples[1].physicalWidth);
+  expect(samples[1].physicalWidth).toBeLessThan(samples[2].physicalWidth);
+
+  const guestContext = await browser.newContext({ baseURL });
+  await register(guestContext, '缩放客');
+  await guestContext.request.post(`/api/texas/rooms/${room.id}/join`, { data:{ buyIn:10_000 } });
+  await context.request.post(`/api/texas/rooms/${room.id}/start`, { data:{} });
+  await expect(page.locator('#actionBar')).toBeVisible();
+  const activeMetrics = await texasTableMetrics(page, { width:1912, height:914 }, 1);
+  expect(activeMetrics.overflow).toBeLessThanOrEqual(1);
+  await guestContext.close();
   await context.close();
 });
 

@@ -241,19 +241,18 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
   .community-cards .poker-card{width:40px}
 }
 
-/* Keep an active room inside the viewport; feeds scroll inside their panels. */
+/* Keep the Texas table stable across desktop zoom; short viewports may scroll. */
 @media(min-width:801px){
   body:has(.table-layout:not([hidden])){
-    height:100vh;
-    overflow:hidden;
+    min-height:100vh;
+    overflow:auto;
   }
 
   body:has(.table-layout:not([hidden])) .app-shell{
     --room-gutter:clamp(16px,2vw,40px);
     width:100%;
     max-width:none;
-    height:100vh;
-    min-height:0;
+    min-height:100vh;
     padding-left:var(--room-gutter);
     padding-right:var(--room-gutter);
   }
@@ -287,9 +286,9 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
 
   body:has(.table-layout:not([hidden])) .table-layout{
     width:100%;
-    min-height:0;
-    height:100%;
-    flex:1 1 auto;
+    min-height:clamp(600px,calc(100vh - 279px),635px);
+    height:auto;
+    flex:1 0 auto;
     grid-template-columns:clamp(230px,18vw,320px) minmax(0,1fr) clamp(240px,19vw,360px);
     grid-template-rows:minmax(0,1fr) auto;
   }
@@ -300,7 +299,7 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
   }
 
   body:has(.table-layout:not([hidden])) .felt{
-    width:min(calc(100% - 44px),calc(100vh - 240px));
+    width:min(calc(100% - 44px),42rem);
     height:auto;
     max-width:100%;
     margin-top:18px;
@@ -341,7 +340,7 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
 
 /* Final table layout overrides (kept last so density presets cannot undo them). */
 .table-stage{position:relative;width:calc(100% - 64px);margin:26px auto 14px;padding-top:58px}
-.table-stage>.felt{width:100%;margin:0;min-height:0}
+.table-stage>.felt{width:min(100%,42rem);margin:0 auto;min-height:0}
 .seat-labels{position:absolute;top:0;right:0;left:0;z-index:12;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;max-height:54px;overflow:hidden;pointer-events:none}
 .seat-label{display:inline-block;min-width:64px;max-width:140px;overflow:hidden;padding:5px 9px;border:1px solid #435248;border-radius:5px;background:#17231b;color:#eff2e9;font-size:11px;font-weight:800;text-align:center;text-overflow:ellipsis;white-space:nowrap}
 .seat-label.current{border-color:#55b589;box-shadow:0 0 0 1px #55b589}
@@ -356,8 +355,8 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
 .player-seat{width:19%;min-width:82px;max-width:150px}
 .player-seat.self{top:84%}
 .player-name-accessible{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;border:0!important;clip:rect(0 0 0 0)!important;clip-path:inset(50%)!important;white-space:nowrap!important}
-body:has(.table-layout:not([hidden])) .table-stage>.felt{width:100%;margin:0;min-height:0}
-body:has(.table-layout:not([hidden])) .table-stage>.felt .felt-center{top:39%}
+body:has(.table-layout:not([hidden])) .table-stage>.felt{width:min(100%,42rem);margin:0 auto;min-height:0}
+body:has(.table-layout:not([hidden])) .table-stage>.felt .felt-center{top:37.5%}
 @media(max-width:620px){body:has(.table-layout:not([hidden])) .player-seat:not(.self) .player-stack,body:has(.table-layout:not([hidden])) .player-seat:not(.self) .player-badges{display:none}}
 @keyframes label-winner-flash{0%,100%{transform:scale(1)}18%,55%{transform:scale(1.055);filter:brightness(1.25)}36%,75%{transform:scale(1);filter:brightness(1)}}
 body[data-motion="disabled"] .seat-label.winner-seat{animation:none}

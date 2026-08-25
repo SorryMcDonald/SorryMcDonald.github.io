@@ -24,7 +24,9 @@ level: L4
     },
     "technical_plan": "5b2a2fc8c6a5557cf0c023e1a50ceabb041e8d8f465a58c56246d6c054419636"
   },
-  "artifacts": [],
+  "artifacts": [
+    "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/result.md"
+  ],
   "batch": {
     "frozen_at": "2026-08-19T20:28:13Z",
     "task_ids": [
@@ -43,14 +45,31 @@ level: L4
   "kind": "risk",
   "level": "L4",
   "pending_gate": null,
-  "phase": "implementing",
+  "phase": "complete",
   "residual_risk": [],
-  "result_ref": null,
-  "review": [],
+  "result_ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/result.md",
+  "result_sha256": "a416e8af70f6d43be65dba8da04fc501d83d4a0231475a774425fe3fc3a3b9a5",
+  "review": [
+    {
+      "kind": "review",
+      "recorded_at": "2026-08-24T03:02:45Z",
+      "ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/review.md",
+      "sha256": "780f41cb1ea833bd33c8d7db965a03bcd0c27aef114f2245f61eb0a09cbd05dc",
+      "status": "passed"
+    }
+  ],
   "route": null,
   "task_id": "71d4428f-ff22-4e8d-bdb8-f09efcb0221b",
   "title": "炸金花生产发布与回滚审计",
-  "updated_at": "2026-08-19T20:28:13Z",
-  "validation": []
+  "updated_at": "2026-08-24T03:02:45Z",
+  "validation": [
+    {
+      "kind": "validation",
+      "recorded_at": "2026-08-24T03:02:45Z",
+      "ref": "work-flow/docs/requirements/0002_炸金花生产发布与回滚审计_L4/validation.md",
+      "sha256": "c205ed12aadcff660f91f2e1629ce3115a3778dda789c2669bbd1139b24b02be",
+      "status": "passed"
+    }
+  ]
 }
 ---end-workflow-task-json---
