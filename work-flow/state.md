@@ -7,23 +7,6 @@
   "mode": "adopt",
   "recent_events": [
     {
-      "at": "2026-08-19T04:36:26Z",
-      "detail": {
-        "kind": "code",
-        "level": "L4",
-        "task_id": "be50d92f-59cc-4b99-8286-31b29374c38b"
-      },
-      "name": "task.add"
-    },
-    {
-      "at": "2026-08-19T04:41:18Z",
-      "detail": {
-        "task_id": "be50d92f-59cc-4b99-8286-31b29374c38b",
-        "to": "planned"
-      },
-      "name": "task.transition"
-    },
-    {
       "at": "2026-08-19T04:41:18Z",
       "detail": {
         "task_id": "be50d92f-59cc-4b99-8286-31b29374c38b",
@@ -335,9 +318,105 @@
         "to": "implementing"
       },
       "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:44:38Z",
+      "detail": {
+        "task_id": "9f89dba1-ab42-4c01-b9e1-bd33d927f901",
+        "to": "validating"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:44:39Z",
+      "detail": {
+        "task_id": "9f89dba1-ab42-4c01-b9e1-bd33d927f901",
+        "to": "reviewing"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:44:41Z",
+      "detail": {
+        "task_id": "9f89dba1-ab42-4c01-b9e1-bd33d927f901",
+        "to": "reporting"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:44:42Z",
+      "detail": {
+        "task_id": "9f89dba1-ab42-4c01-b9e1-bd33d927f901",
+        "to": "complete"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:10Z",
+      "detail": {
+        "task_id": "57e3fa9a-1693-4012-b6d0-f2c94622aab2",
+        "to": "validating"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:11Z",
+      "detail": {
+        "task_id": "57e3fa9a-1693-4012-b6d0-f2c94622aab2",
+        "to": "reviewing"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:12Z",
+      "detail": {
+        "task_id": "57e3fa9a-1693-4012-b6d0-f2c94622aab2",
+        "to": "reporting"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:13Z",
+      "detail": {
+        "task_id": "57e3fa9a-1693-4012-b6d0-f2c94622aab2",
+        "to": "complete"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:44Z",
+      "detail": {
+        "task_id": "1ba1870b-6e52-4c7c-bbe0-d59a588b9ae4",
+        "to": "validating"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:45Z",
+      "detail": {
+        "task_id": "1ba1870b-6e52-4c7c-bbe0-d59a588b9ae4",
+        "to": "reviewing"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:46Z",
+      "detail": {
+        "task_id": "1ba1870b-6e52-4c7c-bbe0-d59a588b9ae4",
+        "to": "reporting"
+      },
+      "name": "task.transition"
+    },
+    {
+      "at": "2026-08-25T06:45:48Z",
+      "detail": {
+        "task_id": "1ba1870b-6e52-4c7c-bbe0-d59a588b9ae4",
+        "to": "complete"
+      },
+      "name": "task.transition"
     }
   ],
-  "revision": 39,
+  "revision": 51,
   "runtime_version": "1.2.0",
   "schema_version": 1,
   "status": "initialized",
@@ -361,7 +440,9 @@
         },
         "technical_plan": "031e7a530c86c2b87ef4f202acccfe8ade33b56e98b55b82fcff0ca791b15ff9"
       },
-      "artifacts": [],
+      "artifacts": [
+        "work-flow/docs/requirements/0005_Texas缩放修复生产发布与回滚审计_L4/result.md"
+      ],
       "batch": {
         "frozen_at": "2026-08-25T06:17:00Z",
         "task_ids": [
@@ -380,26 +461,43 @@
       "kind": "risk",
       "level": "L4",
       "pending_gate": null,
-      "phase": "implementing",
+      "phase": "complete",
       "residual_risk": [],
-      "result_ref": null,
-      "review": [],
+      "result_ref": "work-flow/docs/requirements/0005_Texas缩放修复生产发布与回滚审计_L4/result.md",
+      "result_sha256": "dfca95ba7e261fc92bb0edd1f4105372f28a328b10fd5e5704f0ada3f6a2644d",
+      "review": [
+        {
+          "kind": "review",
+          "recorded_at": "2026-08-25T06:45:46Z",
+          "ref": "work-flow/docs/requirements/0005_Texas缩放修复生产发布与回滚审计_L4/review.md",
+          "sha256": "7fe68908f31204d6c8258057e6235a4850eb304a59b04b9d29af891ba2cf4541",
+          "status": "passed"
+        }
+      ],
       "route": null,
       "task_id": "1ba1870b-6e52-4c7c-bbe0-d59a588b9ae4",
       "title": "Texas缩放修复生产发布与回滚审计",
-      "updated_at": "2026-08-25T06:17:00Z",
-      "validation": []
+      "updated_at": "2026-08-25T06:45:48Z",
+      "validation": [
+        {
+          "kind": "validation",
+          "recorded_at": "2026-08-25T06:45:44Z",
+          "ref": "work-flow/docs/requirements/0005_Texas缩放修复生产发布与回滚审计_L4/validation.md",
+          "sha256": "8ddc00acc11170380cebfa91674cb2fbe62d4835d7327f843609a175a4d1684e",
+          "status": "passed"
+        }
+      ]
     },
     "57e3fa9a-1693-4012-b6d0-f2c94622aab2": {
       "display_seq": "0004",
       "kind": "test",
       "level": "L3",
-      "phase": "implementing",
+      "phase": "complete",
       "state_ref": "work-flow/docs/requirements/0004_Texas缩放修复全量与生产验收_L3/task-state.md",
-      "state_sha256": "9f2d2f21d395fd0f78145c9381c45d447e11ec920395d6573b817917b2e51ec0",
+      "state_sha256": "635fe85783eab36ea5141fa517da8089ceb65831ff58b06b5eba180fc09fe941",
       "task_id": "57e3fa9a-1693-4012-b6d0-f2c94622aab2",
       "title": "Texas缩放修复全量与生产验收",
-      "updated_at": "2026-08-25T06:16:25Z"
+      "updated_at": "2026-08-25T06:45:13Z"
     },
     "71d4428f-ff22-4e8d-bdb8-f09efcb0221b": {
       "display_seq": "0002",
@@ -416,12 +514,12 @@
       "display_seq": "0003",
       "kind": "code",
       "level": "L4",
-      "phase": "implementing",
+      "phase": "complete",
       "state_ref": "work-flow/docs/requirements/0003_Texas缩放修复合并提交与部署_L4/task-state.md",
-      "state_sha256": "115164e82236c9c034683ced23ad28b962233db257a38a823408e076a3cda0dc",
+      "state_sha256": "585cd88127fc12e14f52dd0121ff6b5b4828f3c0b9fc85bd0ceeee8d9fbc9887",
       "task_id": "9f89dba1-ab42-4c01-b9e1-bd33d927f901",
       "title": "Texas缩放修复合并提交与部署",
-      "updated_at": "2026-08-25T06:15:53Z"
+      "updated_at": "2026-08-25T06:44:42Z"
     },
     "be50d92f-59cc-4b99-8286-31b29374c38b": {
       "display_seq": "0000",
