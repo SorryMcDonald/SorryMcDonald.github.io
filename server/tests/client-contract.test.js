@@ -46,6 +46,9 @@ describe('browser client contract', () => {
     expect(js).toContain('function toggleSound');
     expect(js).toContain("playSound('bomb')");
     expect(js).toContain('state.selected=new Set([...state.selected].filter');
+    expect(js).toContain("response.status>=500?'服务器暂时不可用，请稍后重试':data.message??data.error??'请求失败'");
+    expect(js).toContain('if(data.currentRoom){applyRoom(data.currentRoom,{initial:true})');
+    expect(js).toContain("room.isMember?'返回牌桌'");
     expect(css).toContain('.countdown.urgent');
     expect(css).toContain('.effect-layer.active');
     expect(css).toContain('@media(max-width:760px)');

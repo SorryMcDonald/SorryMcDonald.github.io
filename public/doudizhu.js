@@ -20,7 +20,8 @@ const escapeHtml=(value)=>String(value??'').replace(/[&<>"']/g,(char)=>({
 
 async function api(path,options={}){const response=await fetch(path,{credentials:'include',headers:{'content-type':'application/json',...(options.headers??{})},...options,body:options.body===undefined?undefined:JSON.stringify(options.body)});
 const data=await response.json().catch(()=>({}));
-if(!response.ok)throw new Error(data.error??'请求失败');
+if(!response.ok){const message=response.status>=500?'服务器暂时不可用，请稍后重试':data.message??data.error??'请求失败';
+throw new Error(message)}
 return data}
 function money(value){return Number(value??0).toLocaleString('zh-CN')}
 function show(id,visible){$(id).hidden=!visible}
@@ -83,17 +84,19 @@ node.replaceChildren();
 if(!state.rooms.length){node.innerHTML='<div class="empty-rooms">当前没有等待中的牌桌<br><small>创建一个房间，邀请好友开局</small></div>';
 return}for(const room of state.rooms){const card=document.createElement('article');
 card.className='room-card';
-const available=['waiting','finished'].includes(room.status)&&room.playerCount<room.maxPlayers;
+const available=room.isMember||['waiting','finished'].includes(room.status)&&room.playerCount<room.maxPlayers;
 card.innerHTML=`<div class="room-card-head"><h3>房间 ${escapeHtml(room.code)}</h3><span class="room-status">${escapeHtml(STATUS[room.status]??room.status)}</span></div><p>${room.playerCount}/${room.maxPlayers} 人 · 底分 ${money(room.baseScore)} · 经典玩法</p>`;
 const button=document.createElement('button');
 button.className='gold-button';
-button.textContent=available?'加入牌桌':'暂不可加入';
+button.textContent=room.isMember?'返回牌桌':available?'加入牌桌':'暂不可加入';
 button.disabled=!available;
 button.onclick=()=>enterRoom(room.id);
 card.append(button);
 node.append(card)}}
 async function loadRooms(){try{const data=await api('/api/doudizhu/rooms');
 state.rooms=data.rooms??[];
+if(data.currentRoom){applyRoom(data.currentRoom,{initial:true});
+return}
 renderRooms();
 setError()}catch(error){$('lobbyError').textContent=error.message}}
 async function enterRoom(roomId){try{playSound('click');
@@ -293,16 +296,25 @@ $('authSubmit').textContent=state.authMode==='register'?'注册并进入':'登�
 $('authModeToggle').textContent=state.authMode==='register'?'返回登录':'注册新账号';
 $('passwordInput').autocomplete=state.authMode==='register'?'new-password':'current-password'});
 
-$('createButton').addEventListener('click',async()=>{try{playSound('click');
+$('createButton').addEventListener('click',async()=>{if(state.busy)return;
+state.busy=true;
+$('createButton').disabled=true;
+try{playSound('click');
 const data=await api('/api/doudizhu/rooms',{method:'POST',body:{maxPlayers:Number($('maxPlayers').value),baseScore:Number($('baseScore').value)}});
 applyRoom(data.room)}catch(error){$('lobbyError').textContent=error.message;
-playSound('error')}});
-$('leaveButton').addEventListener('click',async()=>{if(state.room)await api(`/api/doudizhu/rooms/${state.room.id}/leave`,{method:'POST',body:{}}).catch(()=>{});
+playSound('error')}finally{state.busy=false;
+$('createButton').disabled=false}});
+$('leaveButton').addEventListener('click',async()=>{if(state.busy)return;
+state.busy=true;
+$('leaveButton').disabled=true;
+try{if(state.room)await api(`/api/doudizhu/rooms/${state.room.id}/leave`,{method:'POST',body:{}});
 state.room=null;
 state.selected.clear();
 show('roomView',false);
 show('lobbyView',true);
-await loadRooms()});
+await loadRooms()}catch(error){setError(error.message);
+playSound('error')}finally{state.busy=false;
+$('leaveButton').disabled=false}});
 $('logoutButton').addEventListener('click',logout);
 $('refreshRoomsButton').addEventListener('click',()=>{playSound('click');
 void loadRooms()});

@@ -187,9 +187,17 @@ export class DoudizhuService {
   now() { return numeric(this.clock?.now?.(), Date.now()); }
   user(userId) { const user = this.store.users.get(userId); if (!user) throw httpError(404, '用户不存在'); return user; }
   room(roomId) { const room = this.rooms.get(roomId) ?? [...this.rooms.values()].find((candidate) => candidate.code === String(roomId)); if (!room) throw httpError(404, '斗地主房间不存在'); return room; }
+  activeRoomsForUser(userId) { return [...this.rooms.values()].filter((room) => room.status !== 'closed' && room.players.some((player) => player.userId === userId && !player.left)); }
+  activeRoomForUser(userId) {
+    const rooms = this.activeRoomsForUser(userId);
+    if (rooms.length > 1) throw Object.assign(httpError(409, '账号存在多个斗地主房间，请联系管理员处理'), { code: 'DOUDIZHU_MEMBERSHIP_CONFLICT' });
+    return rooms[0] ?? null;
+  }
   touch(room) { room.version += 1; room.updatedAt = new Date(this.now()).toISOString(); return room; }
   createRoom(userId, input = {}) {
     this.user(userId);
+    const existing = this.activeRoomForUser(userId);
+    if (existing) return existing;
     const maxPlayers = Math.floor(numeric(input.maxPlayers, 3));
     const baseScore = Math.floor(numeric(input.baseScore, 100));
     if (![2, 3, 4].includes(maxPlayers)) throw httpError(400, '斗地主人数上限必须为 2～4 人');
@@ -199,7 +207,9 @@ export class DoudizhuService {
     if (!code) throw httpError(503, '暂时无法生成斗地主房间号');
     const id = randomUUID();
     const room = { id, code, version: 1, gameType: 'doudizhu', maxPlayers, baseScore, status: 'waiting', hostUserId: userId, players: [], spectators: new Set(), game: null, events: [], eventSeq: 0, updatedAt: new Date(this.now()).toISOString() };
-    this.rooms.set(id, room); this.joinRoom(id, userId); appendEvent(room, 'doudizhu_room_created', { code }); return room;
+    this.rooms.set(id, room);
+    try { this.joinRoom(id, userId); appendEvent(room, 'doudizhu_room_created', { code }); return room; }
+    catch (error) { this.rooms.delete(id); throw error; }
   }
   joinRoom(roomId, userId) {
     const room = this.room(roomId); const user = this.user(userId);

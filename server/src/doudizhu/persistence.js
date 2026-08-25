@@ -16,7 +16,10 @@ export function createDoudizhuPersistence({ db, service }) {
   return {
     async hydrateRooms() {
       const result = await db.query(`SELECT state FROM doudizhu_rooms WHERE status <> 'closed' AND state <> '{}'::jsonb ORDER BY updated_at`);
-      for (const row of result.rows) { const room = deserializeRoom(row.state); if (room) service.rooms.set(room.id, room); }
+      for (const row of result.rows) {
+        const room = deserializeRoom(row.state);
+        if (room && room.status !== 'closed' && room.players.some((player) => !player.left)) service.rooms.set(room.id, room);
+      }
     },
     async flushRoom(roomId) {
       const room = service.room(roomId);
