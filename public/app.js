@@ -208,34 +208,37 @@ async function loadRoom() {
   renderRoom();
 }
 
-function upperArcPositions(count) {
-  const layouts = {
-    1: [{ left: 50, top: 20 }],
-    2: [{ left: 28, top: 22 }, { left: 72, top: 22 }],
-    3: [{ left: 18, top: 34 }, { left: 50, top: 19 }, { left: 82, top: 34 }],
-    4: [{ left: 13, top: 42 }, { left: 36, top: 21 }, { left: 64, top: 21 }, { left: 87, top: 42 }],
-    5: [{ left: 11, top: 64 }, { left: 25, top: 20 }, { left: 50, top: 19 }, { left: 75, top: 20 }, { left: 89, top: 64 }]
-  };
-  return layouts[count] ?? [];
+// Opponents form one band hanging from the felt's top rim, and with four or more
+// of them the outermost pair drops onto the flanks so the row cannot spill past
+// the rim. Vertical placement is handed to CSS as band offsets rather than
+// percentages, so a short felt squeezes the middle of the table instead of
+// sliding a seat over the pot or off the rim.
+const SEAT_MAX_WIDTH = 24;
+const SEAT_MIN_GAP = 4;
+
+function seatBand(count) {
+  const total = Math.max(0, Number(count) || 0);
+  const flanks = total >= 4 ? 2 : 0;
+  const banded = total - flanks;
+  const width = Math.min(SEAT_MAX_WIDTH, 100 / Math.max(1, banded + 0.35));
+  const edge = width / 2 + 1;
+  const step = banded > 1 ? Math.min((100 - 2 * edge) / (banded - 1), width + SEAT_MIN_GAP) : 0;
+  const slots = [];
+  if (flanks) slots.push({ left: edge, flank: true });
+  for (let index = 0; index < banded; index += 1) slots.push({ left: 50 - (step * (banded - 1)) / 2 + step * index, flank: false });
+  if (flanks) slots.push({ left: 100 - edge, flank: true });
+  return { slots, width };
 }
 
 function projectSeats(players, userId) {
   const ordered = [...players].sort((left, right) => left.seat - right.seat);
   const selfIndex = ordered.findIndex((player) => player.userId === userId);
-  if (selfIndex < 0) {
-    const arc = upperArcPositions(ordered.length - 1);
-    return ordered.map((player, index) => ({
-      player,
-      position: index === 0 ? { left: 50, top: 82 } : arc[index - 1] ?? { left: 50, top: 50 },
-      self: false
-    }));
-  }
-  const rotated = [...ordered.slice(selfIndex), ...ordered.slice(0, selfIndex)];
-  const arc = upperArcPositions(rotated.length - 1);
+  const rotated = selfIndex < 0 ? ordered : [...ordered.slice(selfIndex), ...ordered.slice(0, selfIndex)];
+  const { slots } = seatBand(rotated.length - 1);
   return rotated.map((player, index) => ({
     player,
-    position: index === 0 ? { left: 50, top: 82 } : arc[index - 1],
-    self: index === 0
+    position: index === 0 ? { left: 50, south: true, flank: false } : { ...(slots[index - 1] ?? { left: 50, flank: false }), south: false },
+    self: selfIndex >= 0 && index === 0
   }));
 }
 
@@ -316,7 +319,8 @@ function renderPlayer(projected) {
   if (player.seat === room.currentTurn) seat.classList.add('current');
   if (player.folded) seat.classList.add('folded');
   seat.style.setProperty('--seat-left', `${position.left}%`);
-  seat.style.setProperty('--seat-top', `${position.top}%`);
+  if (position.south) seat.classList.add('south-seat');
+  else if (position.flank) seat.classList.add('flank-seat');
 
   const name = document.createElement('div');
   name.className = 'player-name';
@@ -412,7 +416,11 @@ function renderRoom() {
   $('spectateButton').hidden = Boolean(room.tournament) || !room.allowSpectators || room.isSpectator;
   $('refillButton').hidden = Boolean(room.tournament) || Number(state.user.beans ?? 0) !== 0;
   $('players').dataset.seatCount = String(room.players.length);
-  $('players').replaceChildren(...projectSeats(room.players, state.user.id).map(renderPlayer));
+  const projected = projectSeats(room.players, state.user.id);
+  const band = seatBand(projected.filter((slot) => !slot.self).length);
+  // Written on the felt so the seats and the pot can both read the band width.
+  $('felt').style.setProperty('--seat-width', `${Math.round(band.width * 10) / 10}%`);
+  $('players').replaceChildren(...projected.map(renderPlayer));
   renderActions();
   renderMessages();
   startCountdown();

@@ -339,10 +339,11 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
 }
 
 /* Final table layout overrides (kept last so density presets cannot undo them). */
-.table-stage{position:relative;width:calc(100% - 64px);margin:26px auto 14px;padding-top:58px}
-.table-stage>.felt{width:min(100%,42rem);margin:0 auto;min-height:0}
-.seat-labels{position:absolute;top:0;right:0;left:0;z-index:12;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;max-height:54px;overflow:hidden;pointer-events:none}
-.seat-label{display:inline-block;min-width:64px;max-width:140px;overflow:hidden;padding:5px 9px;border:1px solid #435248;border-radius:5px;background:#17231b;color:#eff2e9;font-size:11px;font-weight:800;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+.table-stage{position:relative;display:flex;width:calc(100% - 48px);margin:14px auto 8px;padding-top:0;flex-direction:column;align-items:center}
+.table-stage>.felt{width:min(100%,42rem);margin:0;min-height:0}
+/* The rail is in normal flow so full nicknames may wrap without being clipped. */
+.seat-labels{position:static;z-index:12;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px;width:100%;max-height:none;margin-bottom:7px;overflow:visible;pointer-events:none}
+.seat-label{display:inline-block;max-width:none;min-width:52px;overflow:visible;padding:4px 8px;border:1px solid #435248;border-radius:5px;background:#17231b;color:#eff2e9;font-size:11px;font-weight:800;text-align:center;text-overflow:clip;white-space:nowrap}
 .seat-label.current{border-color:#55b589;box-shadow:0 0 0 1px #55b589}
 .seat-label.self{border-color:#d7ad4d;color:#ffe39a}
 .seat-label.folded{filter:saturate(.35);opacity:.67}
@@ -350,27 +351,101 @@ body[data-motion="disabled"] .empty-seat-glow{animation:none}body[data-motion="d
 .seat-label.seat-edge-flash{animation:seat-edge-flash .8s ease-out}
 .seat-label.seat-check-flash{animation:check-flash .55s ease-out}
 .seat-label.winner-seat{border-color:#e7bd50;box-shadow:0 0 0 2px rgba(231,189,80,.5),0 0 20px rgba(231,189,80,.4);animation:label-winner-flash 1.35s ease-in-out}
-.felt-center{top:60%;z-index:4}
+/* The felt is split into three bands that never overlap: opponents on the top
+   rim, the board and the pot in the middle, the hero on the bottom rim. The band
+   sizes live on the felt so both the seats and the centre can read them, and the
+   centre is anchored to both bands so a short felt squeezes the middle instead of
+   pushing a seat outside the rim or over the community cards. */
+/* A full ellipse (border-radius:50%) clips whatever sits on the top rim, which is
+   exactly where the opponent band lives, so the felt is a rounded rectangle: the
+   corners still read as a table but the whole width stays usable. */
+.table-stage>.felt{--opp-band:66px;--self-band:160px;border-radius:46px}
+.table-stage>.felt:after,.table-stage>.felt .table-rail{border-radius:36px}
+.felt-center{top:calc(var(--opp-band) + 8px);bottom:calc(var(--self-band) + 6px);left:50%;display:flex;width:min(92%,20rem);height:auto;transform:translateX(-50%);flex-direction:column;align-items:center;justify-content:center;z-index:4}
 .community-cards{position:relative;z-index:1}
-.player-seat{width:19%;min-width:82px;max-width:150px}
-.player-seat.self{top:84%}
+.player-seat{width:var(--seat-width,19%);min-width:74px;max-width:150px}
+/* Opponents only ever show two face-down cards, so a two-column grid keeps the
+   whole seat inside the top band. */
+.player-seat:not(.self),.empty-seat{transform:translate(-50%,0)}
+.player-seat:not(.self){display:grid;grid-template-areas:"avatar cards" "stack badges";grid-template-columns:auto auto;align-items:center;justify-content:center;gap:1px 5px}
+.player-seat:not(.self) .player-avatar{grid-area:avatar;margin:0}
+.player-seat:not(.self) .player-stack{grid-area:stack;margin:0;font-size:9px;white-space:nowrap}
+.player-seat:not(.self) .player-badges{grid-area:badges;min-height:0;margin:0;gap:2px}
+.player-seat:not(.self) .hole-cards{grid-area:cards;height:34px;min-height:34px;margin:0}
+.player-seat:not(.self) .poker-card{width:24px}
+.player-seat.self{top:auto;bottom:3px;transform:translateX(-50%)}
+.player-seat.self .hole-cards{height:70px;min-height:70px}
+/* Restated because the seats no longer re-center on the Y axis. */
+@keyframes winner-double-flash{0%,100%{transform:translateX(-50%) scale(1)}18%,55%{transform:translateX(-50%) scale(1.055);filter:brightness(1.25)}36%,75%{transform:translateX(-50%) scale(1);filter:brightness(1)}}
+@keyframes loser-shake{0%,100%{transform:translateX(-50%)}25%{transform:translateX(calc(-50% - 5px))}65%{transform:translateX(calc(-50% + 5px))}}
 .player-name-accessible{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;border:0!important;clip:rect(0 0 0 0)!important;clip-path:inset(50%)!important;white-space:nowrap!important}
-body:has(.table-layout:not([hidden])) .table-stage>.felt{width:min(100%,42rem);margin:0 auto;min-height:0}
-body:has(.table-layout:not([hidden])) .table-stage>.felt .felt-center{top:37.5%}
-@media(max-width:620px){body:has(.table-layout:not([hidden])) .player-seat:not(.self) .player-stack,body:has(.table-layout:not([hidden])) .player-seat:not(.self) .player-badges{display:none}}
+body:has(.table-layout:not([hidden])) .table-stage>.felt{width:min(100%,42rem);margin:0;min-height:0}
 @keyframes label-winner-flash{0%,100%{transform:scale(1)}18%,55%{transform:scale(1.055);filter:brightness(1.25)}36%,75%{transform:scale(1);filter:brightness(1)}}
 body[data-motion="disabled"] .seat-label.winner-seat{animation:none}
 @media(max-width:800px){
-.table-stage{width:calc(100% - 24px);margin:15px auto 10px;padding-top:58px}
-  .table-stage>.felt{width:100%;min-height:380px;margin:0}
-  body:has(.table-layout:not([hidden])) .table-stage>.felt{min-height:380px}
-  body:has(.table-layout:not([hidden])) .table-stage>.felt .felt-center{top:49%}
-  .player-seat{width:22%;min-width:72px;max-width:96px}
+.table-stage{width:calc(100% - 16px);margin:10px auto 8px;padding-top:0}
+  .table-stage>.felt{--opp-band:54px;--self-band:122px;width:100%;min-height:330px;margin:0}
+  body:has(.table-layout:not([hidden])) .table-stage>.felt{min-height:330px}
+  .player-seat{min-width:58px;max-width:96px}
+  .player-seat:not(.self) .hole-cards{height:30px;min-height:30px}
+  .player-seat:not(.self) .poker-card{width:21px}
+  .player-seat.self .hole-cards{height:54px;min-height:54px}
+  .player-seat.self .poker-card{width:37px}
+  .community-cards{min-height:40px;margin-bottom:4px}
+  .community-cards .poker-card{width:27px}
+  .pot-label{padding:2px 12px 0;font-size:10px}
+  .pot-value{padding:0 12px 2px;font-size:17px}
+  .side-pot,.turn-text{margin-top:2px;font-size:10px}
 }
 @media(max-width:620px){
-  .seat-labels{gap:3px;max-height:54px}
-  .seat-label{min-width:58px;max-width:31%;padding:4px 5px;font-size:10px}
-  .table-stage{padding-top:58px}
-  .table-stage>.felt{min-height:380px}
-  .player-seat{width:20%;min-width:66px;max-width:82px}
+  .seat-labels{gap:3px;max-height:none}
+  .seat-label{min-width:46px;padding:3px 5px;font-size:10px}
+  .table-stage>.felt{--opp-band:46px;--self-band:114px}
+  .player-seat{min-width:52px;max-width:82px}
+  .player-avatar{width:20px;height:20px;font-size:9px}
+  .player-seat:not(.self) .hole-cards{height:26px;min-height:26px}
+  .player-seat:not(.self) .poker-card{width:18px}
+  /* "10,000 筹码" cannot wrap and is wider than a seat at this width, so it spilled
+     into the neighbouring seats. The rail and the badges carry the seat identity. */
+  .player-seat:not(.self) .player-stack{display:none}
+}
+
+@media(min-width:801px){
+  .table-stage{width:calc(100% - 40px)}
+  /* The stacked density presets pin this row at 680px and let the side panels
+     grow with their content, which is what pushed the page past a 720p or 768p
+     viewport. Sizing the felt from the viewport keeps the whole table on screen. */
+  body:has(.table-layout:not([hidden])) .table-layout{min-height:0;grid-template-rows:minmax(0,1fr) auto}
+  body:has(.table-layout:not([hidden])) .round-feed,
+  body:has(.table-layout:not([hidden])) .chat-messages{height:0;flex:1 1 0}
+}
+@media(min-width:801px) and (max-height:1000px){
+  body:has(.table-layout:not([hidden])){font-size:16px}
+  body:has(.table-layout:not([hidden])) .topbar{min-height:60px}
+  body:has(.table-layout:not([hidden])) .nav-link{min-height:60px;padding:0 12px;font-size:14px}
+  body:has(.table-layout:not([hidden])) .ticker{height:30px;font-size:13px}
+  body:has(.table-layout:not([hidden])) .table-toolbar{min-height:56px;padding:8px 0 6px}
+  body:has(.table-layout:not([hidden])) .room-heading strong{font-size:21px}
+  body:has(.table-layout:not([hidden])) .primary-button,
+  body:has(.table-layout:not([hidden])) .ghost-button,
+  body:has(.table-layout:not([hidden])) .danger-button,
+  body:has(.table-layout:not([hidden])) .gold-button,
+  body:has(.table-layout:not([hidden])) .all-in-button{min-height:36px;padding:7px 12px;font-size:14px}
+  body:has(.table-layout:not([hidden])) .table-stage{margin:7px auto 4px}
+  body:has(.table-layout:not([hidden])) .table-stage>.felt{--self-band:136px;height:clamp(268px,calc(100vh - 404px),434px);min-height:0;aspect-ratio:auto;border-width:9px}
+  body:has(.table-layout:not([hidden])) .seat-label{padding:3px 7px;font-size:10px}
+  body:has(.table-layout:not([hidden])) .player-avatar{width:22px;height:22px;font-size:10px}
+  body:has(.table-layout:not([hidden])) .player-seat.self .hole-cards{height:58px;min-height:58px}
+  body:has(.table-layout:not([hidden])) .player-seat.self .poker-card{width:40px}
+  body:has(.table-layout:not([hidden])) .community-cards{min-height:44px;margin-bottom:5px}
+  body:has(.table-layout:not([hidden])) .community-cards .poker-card{width:31px}
+  body:has(.table-layout:not([hidden])) .pot-label{padding:2px 14px 0;font-size:11px}
+  body:has(.table-layout:not([hidden])) .pot-value{padding:0 14px 2px;font-size:19px}
+  body:has(.table-layout:not([hidden])) .side-pot,
+  body:has(.table-layout:not([hidden])) .turn-text{margin-top:2px;font-size:11px}
+  body:has(.table-layout:not([hidden])) .action-panel{margin-bottom:5px;padding:7px 12px 8px}
+  body:has(.table-layout:not([hidden])) .action-summary{min-height:24px;font-size:13px}
+  body:has(.table-layout:not([hidden])) .action-grid button{min-width:82px}
+  body:has(.table-layout:not([hidden])) .table-facts{gap:16px;padding:6px;font-size:11px}
+  body:has(.table-layout:not([hidden])) footer{padding-top:4px;padding-bottom:4px;font-size:11px}
 }

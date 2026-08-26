@@ -50,16 +50,34 @@ function cardNode(card, concealed = false) {
   return node;
 }
 
+// Opponent seats form one band hanging from the top rim of the felt, plus a flank
+// seat on each side once the room seats six or more. Vertical placement is handed
+// to CSS as band offsets rather than percentages, so a short felt shrinks the
+// middle of the table instead of sliding a seat over the board or off the rim.
+const TOP_BAND = '4px';
+const FLANK_BAND = 'calc(var(--opp-band) + 12px)';
+const FLANK_LEFT = 9;
+const SEAT_MAX_WIDTH = 23;
+const SEAT_MIN_GAP = 5;
+
+function opponentLayout(total) {
+  const count = Math.max(0, Number(total) || 0);
+  const flanks = count >= 6 ? 2 : 0;
+  const banded = count - flanks;
+  const width = Math.min(SEAT_MAX_WIDTH, 100 / Math.max(1, banded + 0.4));
+  const edge = width / 2 + 1;
+  const step = banded > 1 ? Math.min((100 - 2 * edge) / (banded - 1), width + SEAT_MIN_GAP) : 0;
+  const slots = [];
+  if (flanks) slots.push([FLANK_LEFT, FLANK_BAND]);
+  for (let index = 0; index < banded; index += 1) slots.push([50 - (step * (banded - 1)) / 2 + step * index, TOP_BAND]);
+  if (flanks) slots.push([100 - FLANK_LEFT, FLANK_BAND]);
+  return { slots, width };
+}
+
 function seatPosition(index, total) {
-  // Keep every opponent in a shallow two-row rail. The center of the felt is
-  // reserved for five community cards and the pot, so cards cannot drift
-  // into that region when the room has six to nine players.
-  const columns = Math.min(4, Math.max(1, Math.ceil(total / 2)));
-  const row = Math.floor(index / columns);
-  const rowCount = Math.min(columns, total - row * columns);
-  const column = index % columns;
-  const left = rowCount === 1 ? 50 : 12 + (76 * column) / (rowCount - 1);
-  return { left:`${left}%`, top:`${row === 0 ? 12 : 22}%` };
+  const { slots } = opponentLayout(total);
+  const [left, top] = slots[index % slots.length] ?? [50, TOP_BAND];
+  return { left:`${left}%`, top };
 }
 
 function projectedSeatSlots(room) {
@@ -149,7 +167,12 @@ function renderSeatLabel(slot) {
 function renderSeats() {
   const container = $('seats'); const labels = $('seatLabels'); container.replaceChildren(); labels?.replaceChildren(); if (!state.room) return;
   const start = lastStartEvent(state.room)?.payload ?? {};
-  for (const slot of projectedSeatSlots(state.room)) {
+  const slots = projectedSeatSlots(state.room);
+  const opponents = slots.filter((slot) => !slot.self).length;
+  const layout = opponentLayout(opponents);
+  container.style.setProperty('--seat-width', `${Math.round(layout.width * 10) / 10}%`);
+  container.dataset.crowded = String(opponents >= 6);
+  for (const slot of slots) {
     if (slot.player) {
       container.append(renderPlayerSeat(slot, start));
       labels?.append(renderSeatLabel(slot));

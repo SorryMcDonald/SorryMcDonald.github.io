@@ -131,7 +131,7 @@ body:has(#authView:not([hidden])) main{display:flex;align-items:center;justify-c
 .pot-value{padding:1px 20px 6px;border-radius:0 0 20px 20px;color:var(--gold);font-size:23px;font-weight:800}
 .compare-notice{max-width:310px;min-height:22px;margin-top:7px;overflow:hidden;color:#d8f2df;font-size:12px;text-overflow:ellipsis;white-space:nowrap}
 .players{position:absolute;inset:0;z-index:3}
-.player-seat{position:absolute;top:var(--seat-top);left:var(--seat-left);width:22%;max-width:180px;min-width:138px;transform:translate(-50%,-50%);text-align:center;transition:filter .2s ease,opacity .2s ease,transform .25s ease}
+.player-seat{position:absolute;top:0;left:var(--seat-left);width:22%;max-width:180px;min-width:138px;transform:translate(-50%,-50%);text-align:center;transition:filter .2s ease,opacity .2s ease,transform .25s ease}
 .player-seat.self{top:79%;z-index:5}
 .player-seat.folded{filter:saturate(.35);opacity:.67}
 .player-name{display:inline-block;max-width:100%;overflow:hidden;padding:3px 11px;border-radius:999px;background:rgba(0,0,0,.58);font-size:13px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
@@ -258,12 +258,7 @@ dialog::backdrop{background:rgba(0,0,0,.7)}
   .pot-label{font-size:14px}
   .pot-value{font-size:18px}
   .compare-notice{max-width:190px;font-size:9px}
-  .player-seat{left:clamp(16%,var(--seat-left),84%);width:34%;min-width:104px}
-  .players[data-seat-count="6"] .player-seat:nth-child(2){top:28%;left:16%}
-  .players[data-seat-count="6"] .player-seat:nth-child(3){top:70%;left:16%}
-  .players[data-seat-count="6"] .player-seat:nth-child(4){top:18%;left:50%}
-  .players[data-seat-count="6"] .player-seat:nth-child(5){top:28%;left:84%}
-  .players[data-seat-count="6"] .player-seat:nth-child(6){top:70%;left:84%}
+  .player-seat{width:34%;min-width:104px}
   .player-name{font-size:10px;padding:2px 6px}
   .seat-titles{min-height:13px;margin:2px 0}
   .title-chip{padding:0 4px;font-size:7px;line-height:11px}
@@ -981,4 +976,81 @@ dialog::backdrop{background:rgba(4,10,7,.78)}
     padding-bottom:8px;
     font-size:12px;
   }
+}
+
+/* Final table layout overrides (kept last so the density presets cannot undo them).
+
+   The felt is split into three bands that never overlap: opponents hang from the
+   top rim, the pot sits in the middle, the hero sits on the bottom rim. Band
+   sizes live on the felt so the seats and the centre can both read them, and the
+   centre is anchored to both bands, so a short felt squeezes the middle instead
+   of pushing a seat over the pot or outside the rim. A full ellipse would clip
+   whatever sits on the top rim, so the felt is a rounded rectangle. */
+.felt{--opp-band:110px;--self-band:132px;--seat-width:24%;border-radius:44px}
+.felt:after{inset:14px;border-radius:32px}
+/* The flank seats stand beside the middle band, so the centre is capped to the
+   width they leave free rather than to a share of the felt. */
+.felt-center{top:calc(var(--opp-band) + 8px);bottom:calc(var(--self-band) + 6px);left:50%;display:flex;width:max-content;max-width:calc(100% - 2 * var(--seat-width,24%) - 24px);height:auto;transform:translateX(-50%);flex-direction:column;align-items:center;justify-content:center}
+.players{position:absolute;inset:0;z-index:3}
+.player-seat{top:0;left:var(--seat-left);width:var(--seat-width);min-width:0;max-width:none;transform:translateX(-50%)}
+/* With four or more opponents the outermost pair drops onto the flanks, halfway
+   down the rim, so the top row never has to squeeze past the felt edge. */
+.player-seat.flank-seat{top:calc(var(--opp-band) + 12px)}
+.player-seat.south-seat{top:auto;bottom:3px;z-index:5}
+/* Nicknames wrap instead of ellipsing, which is what used to cut them off. */
+.player-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;max-width:100%;padding:3px 7px;font-size:11px;line-height:1.3;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
+.seat-titles{min-height:0;margin:2px 0}
+.player-meta{min-height:0;margin-bottom:2px;font-size:9px}
+.player-seat:not(.south-seat) .cards{height:44px;min-height:44px;gap:2px}
+.player-seat:not(.south-seat) .card{width:31px}
+.player-seat.south-seat .cards{height:62px;min-height:62px;gap:4px}
+.player-seat.south-seat .card{width:44px}
+/* In flow above the name instead of floating over it: the name now wraps to as
+   many as three lines, so an overlay badge would cover part of it. */
+.turn-countdown{position:static;display:inline-grid;width:auto;min-width:34px;height:auto;margin-bottom:2px;padding:0 5px;border-radius:4px;font-size:9px;line-height:14px}
+/* Restated because the seats no longer re-center on the Y axis. */
+body[data-compare-effect="light"] .player-seat.compare-focus{transform:translateX(-50%) scale(1.04)}
+@keyframes compare-attacker{40%{transform:translateX(calc(-50% + 8%)) scale(1.08)}100%{transform:translateX(-50%)}}
+@keyframes compare-target{40%{transform:translateX(calc(-50% - 8%)) scale(1.08)}100%{transform:translateX(-50%)}}
+
+@media(max-width:800px){
+  .felt{--opp-band:96px;--self-band:140px;min-height:400px}
+  .player-seat:not(.south-seat) .cards{height:38px;min-height:38px}
+  .player-seat:not(.south-seat) .card{width:27px}
+  .player-seat.south-seat .cards{height:54px;min-height:54px}
+  .player-seat.south-seat .card{width:38px}
+}
+@media(max-width:560px){
+  .felt{--opp-band:86px;--self-band:130px;min-height:380px}
+  .player-name{padding:2px 5px;font-size:10px}
+  .player-meta{font-size:8px}
+  .player-seat:not(.south-seat) .cards{height:34px;min-height:34px}
+  .player-seat:not(.south-seat) .card{width:24px}
+  .player-seat.south-seat .cards{height:50px;min-height:50px}
+  .player-seat.south-seat .card{width:35px}
+}
+@media(min-width:801px) and (max-height:1000px){
+  /* The stacked density presets size this page from its content, which is what
+     pushed a 720p or 768p viewport past the fold. Shrinking the chrome and
+     sizing the felt from the viewport keeps the whole table on screen. */
+  body:has(.table-layout:not([hidden])){font-size:16px}
+  body:has(.table-layout:not([hidden])) .topbar{min-height:60px}
+  body:has(.table-layout:not([hidden])) .nav-link{min-height:60px;padding:0 12px;font-size:14px}
+  body:has(.table-layout:not([hidden])) .ticker{height:30px;min-height:30px;font-size:13px}
+  body:has(.table-layout:not([hidden])) .table-toolbar{min-height:56px;padding:8px 0 6px}
+  body:has(.table-layout:not([hidden])) .room-heading strong{font-size:21px}
+  body:has(.table-layout:not([hidden])) .primary-button,
+  body:has(.table-layout:not([hidden])) .ghost-button,
+  body:has(.table-layout:not([hidden])) .danger-button,
+  body:has(.table-layout:not([hidden])) .gold-button,
+  body:has(.table-layout:not([hidden])) .compare-button,
+  body:has(.table-layout:not([hidden])) .all-in-button{min-height:36px;padding:7px 12px;font-size:14px}
+  body:has(.table-layout:not([hidden])) .felt{width:calc(100% - 44px);height:clamp(300px,calc(100vh - 372px),470px);min-height:0;margin:10px auto 8px;aspect-ratio:auto;border-width:9px}
+  body:has(.table-layout:not([hidden])) .pot-label{padding:2px 14px 0;font-size:11px}
+  body:has(.table-layout:not([hidden])) .pot-value{padding:0 14px 2px;font-size:19px}
+  body:has(.table-layout:not([hidden])) .compare-notice{min-height:18px;margin-top:4px;font-size:10px}
+  body:has(.table-layout:not([hidden])) .action-panel{margin-bottom:10px;padding:7px 12px 8px}
+  body:has(.table-layout:not([hidden])) .action-summary{min-height:24px;font-size:12px}
+  body:has(.table-layout:not([hidden])) .action-grid button{min-width:82px}
+  body:has(.table-layout:not([hidden])) footer{padding-top:4px;padding-bottom:4px;font-size:11px}
 }
