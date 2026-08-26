@@ -54,6 +54,35 @@ describe('browser client contract', () => {
     expect(css).toContain('@media(max-width:760px)');
   });
 
+  it('keeps Doudizhu hand cards in document order and supports drag selection on touch and mouse', async () => {
+    const [js, css] = await Promise.all([
+      readFile(new URL('../../public/doudizhu.js', import.meta.url), 'utf8'),
+      readFile(new URL('../../public/doudizhu.css', import.meta.url), 'utf8')
+    ]);
+
+    for (const selector of ['.card:not(.selected):hover', '.card.selected']) {
+      const rule = css.match(new RegExp(`${selector.replace(/[.:()]/g, (char) => `\\${char}`)}\\{([^}]*)\\}`));
+      expect(rule, `missing rule for ${selector}`).toBeTruthy();
+      expect(rule[1]).not.toContain('z-index');
+      expect(rule[1]).toContain('translateY(-');
+    }
+    expect(css).toContain('--card-w:64px');
+    expect(css).toContain('--card-step-ratio-min');
+    expect(css).toMatch(/\.hand\{[^}]*touch-action:none/);
+    expect(css).toMatch(/\.card\{[^}]*width:var\(--card-w\)/);
+    expect(css).not.toMatch(/\.hand\{[^}]*overflow-x:auto/);
+    expect(css).toContain('@media(hover:hover)');
+    expect(css).toContain('@media(max-height:520px)');
+
+    expect(js).toContain("addEventListener('pointerdown',startDrag)");
+    expect(js).toContain("addEventListener('pointermove',moveDrag)");
+    expect(js).toContain("window.addEventListener('pointercancel',endDrag)");
+    expect(js).toContain('function syncSelectionUi');
+    expect(js).toContain('function fitHand');
+    expect(js).toContain('document.elementFromPoint');
+    expect(js).toContain('if(state.drag)syncSelectionUi()');
+  });
+
   it('separates the room lobby from the active table and supports leaving and room discovery', async () => {
     const html = await readFile(new URL('../../public/index.html', import.meta.url), 'utf8');
     const js = await readFile(new URL('../../public/app.js', import.meta.url), 'utf8');

@@ -1,4 +1,4 @@
-const state={user:null,room:null,rooms:[],authMode:'login',poll:null,clock:null,selected:new Set(),globalWs:null,bannerQueue:[],bannerTimer:null,seenBanners:new Set(),muted:localStorage.getItem('doudizhu-muted')==='true',audio:null,lastTick:null,busy:false};
+const state={user:null,room:null,rooms:[],authMode:'login',poll:null,clock:null,selected:new Set(),globalWs:null,bannerQueue:[],bannerTimer:null,seenBanners:new Set(),muted:localStorage.getItem('doudizhu-muted')==='true',audio:null,lastTick:null,busy:false,drag:null,fitFrame:null};
 
 const $=(id)=>document.getElementById(id);
 
@@ -153,6 +153,7 @@ return strip}
 function actionButton(label,action,value,className=''){const button=document.createElement('button');
 button.textContent=label;
 button.className=className;
+button.dataset.action=action;
 button.disabled=state.busy;
 button.onclick=()=>sendAction(action,typeof value==='function'?value():value);
 return button}
@@ -216,19 +217,71 @@ const list=panel.querySelector('.result-list');
 for(const item of result?.items??[]){const row=document.createElement('div');
 row.className='result-item';
 row.innerHTML=`<span>${escapeHtml(item.nickname)}</span><b class="${item.delta>=0?'gain':'loss'}">${item.delta>=0?'+':''}${money(item.delta)}</b><small>余额 ${money(item.balance)}</small>`;
-list.append(row)}panel.querySelector('.result-panel').append(actionButton(me?.ready?'取消准备':'再来一局','ready',!me?.ready,'primary'))}renderHand();
+list.append(row)}panel.querySelector('.result-panel').append(actionButton(me?.ready?'取消准备':'再来一局','ready',!me?.ready,'primary'))}if(state.drag)syncSelectionUi();
+else renderHand();
 renderUser();
 updateCountdown()}
 function renderHand(){const node=$('hand');
 node.replaceChildren();
 const cards=currentPlayer()&&state.room?.game?.myHand?state.room.game.myHand:[];
 for(const card of cards){const button=cardNode(card);
-button.classList.toggle('selected',state.selected.has(card.id));
-button.setAttribute('aria-pressed',String(state.selected.has(card.id)));
-button.onclick=()=>{playSound('click');
-state.selected.has(card.id)?state.selected.delete(card.id):state.selected.add(card.id);
-renderRoom()};
-node.append(button)}$('selectionHint').textContent=state.selected.size?`已选择 ${state.selected.size} 张牌`:''}
+button.dataset.cardId=card.id;
+button.onclick=(event)=>{if(event.detail!==0)return;
+if(applySelection(card.id,state.selected.has(card.id)?'clear':'select')){playSound('click');
+syncSelectionUi()}};
+node.append(button)}syncSelectionUi();
+fitHand()}
+function syncSelectionUi(){for(const card of $('hand').querySelectorAll('.card')){const active=state.selected.has(card.dataset.cardId);
+card.classList.toggle('selected',active);
+card.setAttribute('aria-pressed',String(active))}$('selectionHint').textContent=state.selected.size?`已选择 ${state.selected.size} 张牌`:'';
+const play=document.querySelector('.actions button[data-action="play"]');
+if(play)play.disabled=state.busy||!state.selected.size}
+function applySelection(cardId,mode){if(!cardId)return false;
+const has=state.selected.has(cardId);
+if(mode==='select'?has:!has)return false;
+if(mode==='select')state.selected.add(cardId);
+else state.selected.delete(cardId);
+return true}
+function cardIdFromPoint(x,y){return document.elementFromPoint(x,y)?.closest?.('.card')?.dataset.cardId??null}
+function dragOver(cardId){if(!state.drag||!cardId||state.drag.touched.has(cardId))return;
+state.drag.touched.add(cardId);
+if(applySelection(cardId,state.drag.mode)){playSound('click');
+syncSelectionUi()}}
+function startDrag(event){if(event.button>0)return;
+const cardId=event.target.closest?.('.card')?.dataset.cardId;
+if(!cardId)return;
+event.preventDefault();
+state.drag={pointerId:event.pointerId,mode:state.selected.has(cardId)?'clear':'select',touched:new Set()};
+try{$('hand').setPointerCapture(event.pointerId)}catch{}dragOver(cardId)}
+function moveDrag(event){if(!state.drag||event.pointerId!==state.drag.pointerId)return;
+event.preventDefault();
+dragOver(cardIdFromPoint(event.clientX,event.clientY))}
+function endDrag(event){if(!state.drag||event.pointerId!==state.drag.pointerId)return;
+state.drag=null;
+renderRoom()}
+function fitHand(){const node=$('hand'),table=$('table');
+if(!node||!table)return;
+table.style.removeProperty('--card-w');
+table.style.removeProperty('--card-step');
+const cards=node.querySelectorAll('.card');
+const count=cards.length;
+if(!count)return;
+const baseWidth=cards[0].getBoundingClientRect().width;
+const baseStep=count>1?baseWidth+parseFloat(getComputedStyle(cards[1]).marginLeft||'0'):baseWidth;
+const minRatio=parseFloat(getComputedStyle(table).getPropertyValue('--card-step-ratio-min'))||.26;
+const available=node.clientWidth-1;
+if(!baseWidth||!baseStep||available<=0)return;
+let width=baseWidth;
+const minSpread=(value)=>value*(1+(count-1)*minRatio);
+if(minSpread(width)>available)width=Math.max(24,available/(1+(count-1)*minRatio));
+let step=baseStep*(width/baseWidth);
+if(count>1)step=Math.min(step,(available-width)/(count-1));
+step=Math.max(width*minRatio,step);
+table.style.setProperty('--card-w',`${Math.round(width*100)/100}px`);
+table.style.setProperty('--card-step',`${Math.round(step*100)/100}px`)}
+function scheduleFitHand(){if(state.fitFrame)cancelAnimationFrame(state.fitFrame);
+state.fitFrame=requestAnimationFrame(()=>{state.fitFrame=null;
+fitHand()})}
 function suggestPlay(){const hand=state.room?.game?.myHand??[],last=state.room?.game?.lastPlay?.combo;
 const groups=new Map();
 for(const card of hand){if(!groups.has(card.rank))groups.set(card.rank,[]);
@@ -324,6 +377,13 @@ $('copyRoomButton').addEventListener('click',async()=>{try{await navigator.clipb
 $('copyRoomButton').textContent='已复制';
 window.setTimeout(()=>$('copyRoomButton').textContent='复制房号',1200);
 playSound('click')}catch{setError('复制失败，请手动记录房号')}});
+$('hand').addEventListener('pointerdown',startDrag);
+$('hand').addEventListener('pointermove',moveDrag);
+$('hand').addEventListener('contextmenu',(event)=>event.preventDefault());
+window.addEventListener('pointerup',endDrag);
+window.addEventListener('pointercancel',endDrag);
+window.addEventListener('resize',scheduleFitHand);
+window.addEventListener('orientationchange',scheduleFitHand);
 
 syncSoundButtons();
 (async()=>{try{const data=await api('/api/auth/me');
