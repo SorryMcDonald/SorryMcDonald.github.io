@@ -76,11 +76,11 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   const second = await browser.newContext({ baseURL });
   const firstPage = await first.newPage();
   const secondPage = await second.newPage();
-  await registerUi(firstPage, '浏览甲');
+  const firstUser = await registerUi(firstPage, '浏览甲');
   await firstPage.locator('#createRoomButton').click();
   await expect(firstPage.locator('#tableLayout')).toBeVisible();
   const code = (await firstPage.locator('#roomCode').textContent()).trim();
-  await registerUi(secondPage, '浏览乙');
+  const secondUser = await registerUi(secondPage, '浏览乙');
   await joinVisibleRoom(secondPage, code);
   await expect(firstPage.locator('.player-seat')).toHaveCount(2);
   await firstPage.locator('#startNextButton').click();
@@ -125,7 +125,8 @@ test('two players keep their own south seat and use hidden cards, dialogs, chat,
   await firstPage.locator('#leaderboardButton').click();
   await expect(firstPage.locator('#leaderboardView')).toBeVisible();
   await firstPage.locator('[data-kind="wealth"]').click();
-  await expect(firstPage.locator('.leader-row')).toHaveCount(2);
+  await expect(firstPage.locator('.leader-row').filter({ hasText: firstUser.nickname })).toHaveCount(1);
+  await expect(firstPage.locator('.leader-row').filter({ hasText: secondUser.nickname })).toHaveCount(1);
   await expect(firstPage.locator('.leader-row').first()).toContainText('豆');
   await first.close();
   await second.close();

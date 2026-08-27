@@ -150,6 +150,7 @@ a{color:inherit;text-decoration:none}
 .game-table.dealing .hand .card{animation:dealIn .45s backwards}
 .game-table.dealing .hand .card:nth-child(2n){animation-delay:.03s}
 .game-table.dealing .hand .card:nth-child(3n){animation-delay:.06s}
+.game-table.dealing:has(.hand .card.selected) .hand .card{animation:none}
 footer{padding:10px 15px 18px;color:#607f86;font-size:9px;text-align:center}
 
 @keyframes phasePulse{50%{transform:scale(1.06);box-shadow:0 18px 45px rgba(239,174,55,.24)}
